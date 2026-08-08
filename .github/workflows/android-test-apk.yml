@@ -43,9 +43,6 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      - name: Install Android API 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
       - name: Build debug APK
         working-directory: android
         run: |
