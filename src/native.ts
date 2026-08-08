@@ -33,3 +33,13 @@ export async function scheduleReminder(id: number, title: string, body: string, 
   if (permission.display !== 'granted') return
   await LocalNotifications.schedule({ notifications: [{ id, title, body, schedule: { at: when }, smallIcon: 'ic_stat_icon_config_sample' }] })
 }
+
+export async function requestNotificationAccess() {
+  if (!isAndroid()) return true
+  try {
+    const permission = await LocalNotifications.requestPermissions()
+    return permission.display === 'granted'
+  } catch {
+    return false
+  }
+}
