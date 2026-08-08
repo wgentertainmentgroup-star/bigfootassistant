@@ -1,4 +1,16 @@
-export type Section = 'home' | 'assistant' | 'tasks' | 'people' | 'notes' | 'settings'
+export type Section = 'home' | 'assistant' | 'email' | 'tasks' | 'people' | 'notes' | 'settings'
+
+export type EmailMessage = {
+  id: string
+  threadId: string
+  from: string
+  fromEmail: string
+  subject: string
+  snippet: string
+  date: string
+  unread: boolean
+  messageId?: string
+}
 
 export type Task = {
   id: string
