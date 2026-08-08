@@ -32,7 +32,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Install JavaScript dependencies
         run: npm ci --ignore-scripts
@@ -42,9 +42,6 @@ jobs:
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
-
-      - name: Install Android API 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build debug APK
         working-directory: android
