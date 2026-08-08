@@ -3,10 +3,10 @@ import { defaultState, loadState, saveState } from './storage'
 import { getLastCaller, requestCallerIdAccess, requestNotificationAccess, scheduleReminder, syncPeopleForCallerId } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
-import type { AppState, Person, Section, Task } from './types'
+import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
-const icon: Record<Section, string> = { home: '⌂', assistant: '✦', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
-const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Scout', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
+const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
+const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Scout', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -129,6 +129,7 @@ function App() {
       <main>
         {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
         {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} />}
+        {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
         {section === 'people' && <People people={state.people} onChange={people => patch({ people })} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
         {section === 'notes' && <Notes notes={state.notes} onChange={notes => patch({ notes })} />}
@@ -225,10 +226,10 @@ function Home({ state, todayTasks, lastCaller, go, ask, toggleTask }: { state: A
   return <div className="page home-page">
     <section className="welcome"><div><span className="eyebrow">{timeGreeting()}, {name}</span><h1>Here’s your day.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of.` : 'Your list is clear. Nice work.'}</p></div><div className="bigfoot-mark">🐾</div></section>
     <div className="quick-grid">
-      <button className="quick primary" onClick={() => go('assistant')}><span>✦</span><b>Ask Scout anything</b><small>Talk or type — I’m here to help.</small></button>
+      <button className="quick primary" onClick={() => ask('Manage my day. Check today’s Google Calendar, my important recent Gmail, and my open list. Tell me what needs attention first, what is next, and anything I should not forget. Keep it short and easy to follow.')}><span>☀</span><b>Manage my day</b><small>Calendar, email and your list — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
+      <button className="quick" onClick={() => go('email')}><span>✉</span><b>Important email</b><small>Read messages and see suggested replies.</small></button>
       <button className="quick" onClick={() => go('people')}><span>☎</span><b>Call someone</b><small>{lastCaller || `${state.people.filter(p => !p.deleted).length} people saved`}</small></button>
-      <button className="quick" onClick={() => ask('Give me a short briefing for today based on my list and notes.')}><span>☀</span><b>Read my day to me</b><small>A simple spoken briefing</small></button>
     </div>
     <section className="panel today-panel"><div className="panel-head"><div><span className="eyebrow">TODAY</span><h2>Your short list</h2></div><button className="text-button" onClick={() => go('tasks')}>See all →</button></div>
       {todayTasks.length === 0 ? <div className="empty">✓ Nothing urgent. You’re caught up.</div> : todayTasks.slice(0, 4).map(t => <label className="task-row" key={t.id}><input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} /><span><b>{t.text}</b><small>{t.due ? 'Due today or earlier' : 'No date'}</small></span>{t.important && <em>Important</em>}</label>)}
@@ -244,8 +245,76 @@ function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleL
   function submit(e: FormEvent) { e.preventDefault(); if (input.trim()) { ask(input); setInput('') } }
   return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Scout'}</h1><p>Ask naturally. You don’t need special commands.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : 'Start live conversation'}</button></div>
     <div className="chat panel">{state.chat.slice(-20).map((m, i) => <div key={i} className={`bubble ${m.role}`}><small>{m.role === 'assistant' ? state.preferences.assistantName : 'You'}</small>{m.text}</div>)}{thinking && <div className="bubble assistant thinking">Scout is thinking <i>•••</i></div>}<div ref={bottom} /></div>
-    <div className="suggestions"><button onClick={() => ask('What should I focus on today?')}>What should I focus on?</button><button onClick={() => ask('What is on my Google Calendar today?')}>Today’s calendar</button><button onClick={() => ask('Summarize my most important recent Gmail messages.')}>Important email</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
+    <div className="suggestions"><button onClick={() => ask('Manage my day: check today’s calendar, important email, and my list, then tell me what to do first.')}>Manage my day</button><button onClick={() => ask('What is next on my Google Calendar today?')}>What’s next?</button><button onClick={() => ask('Summarize my most important recent Gmail messages and tell me which need a reply.')}>Important email</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
     <form className="ask-box" onSubmit={submit}><button type="button" className={listening ? 'listening' : ''} onClick={listen}>🎙</button><input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask Scout anything…" aria-label="Ask Scout" /><button className="send">Send</button></form>
+  </div>
+}
+
+function Email({ state, notify }: { state: AppState; notify: (s: string) => void }) {
+  const [messages, setMessages] = useState<EmailMessage[]>([])
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [sending, setSending] = useState('')
+  const [sent, setSent] = useState<Record<string, boolean>>({})
+  const base = getCompanionBase(state.preferences.apiBase)
+  const headers = { 'Content-Type': 'application/json', 'X-Bigfoot-Token': state.preferences.companionToken }
+
+  async function suggest(message: EmailMessage) {
+    setDrafts(d => ({ ...d, [message.id]: 'Scout is writing a suggestion…' }))
+    try {
+      const r = await fetch(`${base}/api/mail/suggest-reply`, { method: 'POST', headers, body: JSON.stringify({ email: message, userName: state.preferences.userName }) })
+      if (!r.ok) throw new Error()
+      const data = await r.json() as { draft: string }
+      setDrafts(d => ({ ...d, [message.id]: data.draft === 'NO_REPLY_NEEDED' ? 'No reply appears necessary.' : data.draft }))
+    } catch { setDrafts(d => ({ ...d, [message.id]: 'Could not make a suggestion. Tap “Try suggestion again.”' })) }
+  }
+
+  async function load() {
+    setLoading(true); setError('')
+    try {
+      const r = await fetch(`${base}/api/mail/inbox`, { headers: { 'X-Bigfoot-Token': state.preferences.companionToken } })
+      if (!r.ok) throw new Error()
+      const data = await r.json() as { messages: EmailMessage[] }
+      setMessages(data.messages || [])
+      setLoading(false)
+      for (const message of data.messages || []) void suggest(message)
+    } catch { setLoading(false); setError('Email is not connected yet. Open Settings and connect Gmail, then come back here.') }
+  }
+
+  useEffect(() => { void load() }, [state.preferences.apiBase, state.preferences.companionToken])
+
+  async function sendReply(message: EmailMessage) {
+    const draft = drafts[message.id]?.trim() || ''
+    if (!draft || draft.startsWith('Scout is ') || draft.startsWith('Could not ') || draft === 'No reply appears necessary.') return
+    if (!window.confirm(`Send this reply to ${message.from}?\n\nNothing will be sent unless you choose OK.`)) return
+    setSending(message.id)
+    try {
+      const r = await fetch(`${base}/api/mail/send-reply`, { method: 'POST', headers, body: JSON.stringify({ messageId: message.id, text: draft }) })
+      if (!r.ok) throw new Error()
+      setSent(s => ({ ...s, [message.id]: true })); notify('Your reply was sent.')
+    } catch { notify('The reply was not sent. Please try again.') }
+    finally { setSending('') }
+  }
+
+  return <div className="page email-page"><div className="page-title split"><div><span className="eyebrow">SIMPLE INBOX</span><h1>Important Email</h1><p>Scout reads the newest useful messages and suggests a reply for you.</p></div><button className="email-refresh" onClick={() => void load()}>↻ Refresh email</button></div>
+    <div className="email-safety">🔒 <b>You stay in control.</b> Scout can write a suggested reply, but it will never send one until you approve it.</div>
+    {loading && <section className="panel email-state">Checking your newest email…</section>}
+    {error && <section className="panel email-state email-error"><b>Gmail needs attention.</b><span>{error}</span></section>}
+    {!loading && !error && messages.length === 0 && <section className="panel email-state">No recent inbox messages need your attention.</section>}
+    <div className="email-list">{messages.map(message => {
+      const draft = drafts[message.id] || 'Scout is writing a suggestion…'
+      const editable = !draft.startsWith('Scout is ') && !draft.startsWith('Could not ') && draft !== 'No reply appears necessary.'
+      return <article className={`panel email-card ${message.unread ? 'unread' : ''}`} key={message.id}>
+        <div className="email-meta"><div><span className="eyebrow">{message.unread ? 'NEW MESSAGE' : 'RECENT MESSAGE'}</span><h2>{message.subject}</h2><b>{message.from}</b></div><small>{formatEmailDate(message.date)}</small></div>
+        <p className="email-preview">{message.snippet || 'Open this message in Gmail to read the full content.'}</p>
+        <button className="read-email" onClick={() => speak(`Email from ${message.from}. Subject: ${message.subject}. ${message.snippet}`, true)}>🔊 Read this email to me</button>
+        <div className="reply-box"><div className="reply-title"><span>✦</span><div><b>Scout’s suggested reply</b><small>You can change any words before sending.</small></div></div>
+          {editable ? <textarea value={draft} onChange={e => setDrafts(d => ({ ...d, [message.id]: e.target.value }))} aria-label={`Suggested reply to ${message.from}`} /> : <p className="draft-status">{draft}</p>}
+          <div className="reply-actions"><button onClick={() => speak(draft, true)} disabled={!editable}>🔊 Read reply</button>{draft.startsWith('Could not ') && <button onClick={() => void suggest(message)}>Try suggestion again</button>}<button className="send-reply" onClick={() => void sendReply(message)} disabled={!editable || sending === message.id || sent[message.id]}>{sent[message.id] ? '✓ Sent' : sending === message.id ? 'Sending…' : 'Approve & send reply'}</button></div>
+        </div>
+      </article>
+    })}</div>
   </div>
 }
 
@@ -334,6 +403,7 @@ function Toggle({ label, value, set }: { label: string; value: boolean; set: (v:
 
 function normalizePhone(v: string) { return v.replace(/\D/g, '').slice(-10) }
 function getCompanionBase(value: string) { return value.trim().replace(/\/$/, '') || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '') }
+function formatEmailDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }
 
 function localAssistant(text: string, state: AppState) {
   const q = text.toLowerCase()
