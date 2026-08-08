@@ -20,6 +20,7 @@ export const defaultState: AppState = {
     apiBase: '',
     companionToken: '',
     autoSync: true,
+    setupComplete: false,
   },
 }
 
