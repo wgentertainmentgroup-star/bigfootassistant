@@ -1,0 +1,8 @@
+{
+	"appId": "com.bigfootsoftware.bigfootsday",
+	"appName": "Bigfoot's Day",
+	"webDir": "dist",
+	"android": {
+		"allowMixedContent": true
+	}
+}
