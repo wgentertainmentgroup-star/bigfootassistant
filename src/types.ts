@@ -33,6 +33,7 @@ export type Preferences = {
   apiBase: string
   companionToken: string
   autoSync: boolean
+  setupComplete: boolean
 }
 
 export type AppState = {
