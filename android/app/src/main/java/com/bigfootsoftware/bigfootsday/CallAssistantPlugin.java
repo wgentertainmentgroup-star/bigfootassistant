@@ -77,21 +77,14 @@ public class CallAssistantPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             finishVoice("", "A new voice request started.");
             activeVoiceCall = call;
-            boolean onDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
             try {
-                speechRecognizer = onDevice
-                    ? SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext().getApplicationContext())
-                    : SpeechRecognizer.createSpeechRecognizer(getContext().getApplicationContext());
-            } catch (Exception onDeviceError) {
-                onDevice = false;
-                try {
-                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext().getApplicationContext());
-                } catch (Exception recognitionError) {
-                    finishVoice("", "Samsung voice input could not start. Open phone Settings, General management, Keyboard list and default, then turn on Google voice typing.");
-                    return;
-                }
+                // Use the standard headless recognition service on Samsung. The
+                // on-device factory is not consistent across One UI providers.
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getActivity());
+            } catch (Exception recognitionError) {
+                finishVoice("", "Samsung voice input could not start. Open phone Settings, General management, Keyboard list and default, then turn on Google voice typing.");
+                return;
             }
-            final boolean privateRecognition = onDevice;
             speechRecognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) { sendVoiceState("listening", "Listening…"); }
                 @Override public void onBeginningOfSpeech() { sendVoiceState("hearing", "I hear you…"); }
@@ -117,13 +110,12 @@ public class CallAssistantPlugin extends Plugin {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag());
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-            intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, privateRecognition);
             intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
             intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
             intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
             voiceTimeout = () -> finishVoice("", "Listening timed out. Tap the microphone and try again.");
             voiceHandler.postDelayed(voiceTimeout, 15000L);
-            sendVoiceState("starting", privateRecognition ? "Starting private on-device microphone…" : "Starting microphone…");
+            sendVoiceState("starting", "Starting microphone…");
             try {
                 speechRecognizer.startListening(intent);
             } catch (Exception error) {
