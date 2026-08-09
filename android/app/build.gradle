@@ -18,7 +18,8 @@ android {
     }
     buildTypes {
         debug {
-            applicationIdSuffix ".test"
+            // A fresh package ID avoids signature conflicts with older disposable test APKs.
+            applicationIdSuffix ".v05test"
             versionNameSuffix "-test"
             debuggable true
         }
