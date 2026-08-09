@@ -287,6 +287,11 @@ public class CallAssistantPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openVideoCamera(PluginCall call) {
+        openIntent(call, new Intent(MediaStore.ACTION_VIDEO_CAPTURE));
+    }
+
+    @PluginMethod
     public void openDeviceSettings(PluginCall call) {
         openIntent(call, new Intent(Settings.ACTION_SETTINGS));
     }
