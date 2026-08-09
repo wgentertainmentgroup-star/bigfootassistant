@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.10 release gate: web tests, fresh-install Android E2E journey, then APK packaging.
+# v0.11 release gate: web tests, fresh-install Android E2E journey, then APK packaging.
 
 on:
   push:
@@ -118,14 +118,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.10-E2E-Gated.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.11-ZFold5-Hardened.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.10-e2e-gated \
-            Bigfoots-Day-v0.10-E2E-Gated.apk \
+          gh release create v0.11-zfold5-hardened \
+            Bigfoots-Day-v0.11-ZFold5-Hardened.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.10 — End-to-End Gated Build" \
-            --notes "Samsung Z Fold5-focused repair. Removes the automatic home-shortcut system handoff from setup, blocks Android WebView speech fallback, uses the standard headless Samsung recognition service, renders the assistant before requesting microphone access, and makes every native blank background dark. Release requires a fresh-install emulator journey through all eleven setup screens, the real first lesson, the real Android microphone permission prompt, core navigation, task/person/note creation, persistence after recreation, web regressions, and native lifecycle checks."
+            --title "Bigfoot's Day v0.11 — Z Fold5 Hardened Build" \
+            --notes "Samsung Z Fold5 recovery release. It installs as a separate app and forces the eleven-step setup to begin at Step 1. The Today screen has large dedicated Camera and Video buttons. Voice stays inside Bigfoot's Day, includes a large Stop listening button, and has independent native and interface watchdogs. Release requires the complete fresh-install setup, the real first lesson and Android microphone permission prompt, tested voice cancel recovery, visible Camera/Video controls, core navigation, task/person/note creation, persistence after recreation, web regressions, and native lifecycle checks."
