@@ -1,6 +1,7 @@
 package com.bigfootsoftware.bigfootsday;
 
 import android.Manifest;
+import android.provider.AlarmClock;
 import android.app.role.RoleManager;
 import android.media.AudioAttributes;
 import android.content.Context;
@@ -8,6 +9,7 @@ import android.content.Intent;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,6 +19,8 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
+import android.provider.MediaStore;
+import android.provider.Settings;
 import androidx.activity.result.ActivityResult;
 
 import com.getcapacitor.JSObject;
@@ -73,7 +77,21 @@ public class CallAssistantPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             finishVoice("", "A new voice request started.");
             activeVoiceCall = call;
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext().getApplicationContext());
+            boolean onDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
+            try {
+                speechRecognizer = onDevice
+                    ? SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext().getApplicationContext())
+                    : SpeechRecognizer.createSpeechRecognizer(getContext().getApplicationContext());
+            } catch (Exception onDeviceError) {
+                onDevice = false;
+                try {
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext().getApplicationContext());
+                } catch (Exception recognitionError) {
+                    finishVoice("", "Samsung voice input could not start. Open phone Settings, General management, Keyboard list and default, then turn on Google voice typing.");
+                    return;
+                }
+            }
+            final boolean privateRecognition = onDevice;
             speechRecognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) { sendVoiceState("listening", "Listening…"); }
                 @Override public void onBeginningOfSpeech() { sendVoiceState("hearing", "I hear you…"); }
@@ -99,11 +117,13 @@ public class CallAssistantPlugin extends Plugin {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag());
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+            intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, privateRecognition);
+            intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
             intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
             intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
             voiceTimeout = () -> finishVoice("", "Listening timed out. Tap the microphone and try again.");
             voiceHandler.postDelayed(voiceTimeout, 15000L);
-            sendVoiceState("starting", "Starting microphone…");
+            sendVoiceState("starting", privateRecognition ? "Starting private on-device microphone…" : "Starting microphone…");
             try {
                 speechRecognizer.startListening(intent);
             } catch (Exception error) {
@@ -230,6 +250,59 @@ public class CallAssistantPlugin extends Plugin {
             }
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(launch);
+            result.put("opened", true);
+        } catch (Exception error) {
+            result.put("opened", false);
+        }
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void setTimer(PluginCall call) {
+        int seconds = Math.max(1, call.getInt("seconds", 60));
+        String label = call.getString("label", "Bubba's timer");
+        Intent intent = new Intent(AlarmClock.ACTION_SET_TIMER)
+            .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+            .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+            .putExtra(AlarmClock.EXTRA_SKIP_UI, false);
+        openIntent(call, intent);
+    }
+
+    @PluginMethod
+    public void setAlarm(PluginCall call) {
+        int hour = Math.max(0, Math.min(23, call.getInt("hour", 8)));
+        int minute = Math.max(0, Math.min(59, call.getInt("minute", 0)));
+        String label = call.getString("label", "Bigfoot's Day alarm");
+        Intent intent = new Intent(AlarmClock.ACTION_SET_ALARM)
+            .putExtra(AlarmClock.EXTRA_HOUR, hour)
+            .putExtra(AlarmClock.EXTRA_MINUTES, minute)
+            .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+            .putExtra(AlarmClock.EXTRA_SKIP_UI, false);
+        openIntent(call, intent);
+    }
+
+    @PluginMethod
+    public void openMap(PluginCall call) {
+        String query = call.getString("query", "").trim();
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(query)));
+        openIntent(call, intent);
+    }
+
+    @PluginMethod
+    public void openCamera(PluginCall call) {
+        openIntent(call, new Intent(MediaStore.ACTION_IMAGE_CAPTURE));
+    }
+
+    @PluginMethod
+    public void openDeviceSettings(PluginCall call) {
+        openIntent(call, new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    private void openIntent(PluginCall call, Intent intent) {
+        JSObject result = new JSObject();
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
             result.put("opened", true);
         } catch (Exception error) {
             result.put("opened", false);
