@@ -15,10 +15,12 @@ export function speak(text: string, enabled = true) {
   if (!enabled || !('speechSynthesis' in window)) return
   window.speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(text.replace(/[*#]/g, ''))
-  utterance.rate = 0.94
-  utterance.pitch = 0.96
+  utterance.rate = 0.91
+  utterance.pitch = 0.90
   const voices = window.speechSynthesis.getVoices()
-  const preferred = voices.find(v => /Samantha|David|Google US English/i.test(v.name))
+  const preferred = voices.find(v => /Daniel|George|Ryan|Arthur|Microsoft David|Google UK English Male/i.test(v.name))
+    || voices.find(v => /^en-GB$/i.test(v.lang) && !/female/i.test(v.name))
+    || voices.find(v => /David|Google US English/i.test(v.name))
   if (preferred) utterance.voice = preferred
   window.speechSynthesis.speak(utterance)
 }

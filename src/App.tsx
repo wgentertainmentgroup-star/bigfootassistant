@@ -1,12 +1,13 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultState, loadState, saveState } from './storage'
-import { getLastCaller, requestCallerIdAccess, requestNotificationAccess, scheduleReminder, syncPeopleForCallerId } from './native'
+import { getLastCaller, openChatGPT, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, syncPeopleForCallerId } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Scout', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
+const setupMarker = 'bigfoots-day-easy-setup-v5'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -14,7 +15,7 @@ function timeGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good
 
 function App() {
   const [state, setState] = useState<AppState>(() => loadState())
-  const [showSetup, setShowSetup] = useState(() => !state.preferences.setupComplete)
+  const [showSetup, setShowSetup] = useState(() => !state.preferences.setupComplete || localStorage.getItem(setupMarker) !== 'done')
   const [section, setSection] = useState<Section>('home')
   const [listening, setListening] = useState(false)
   const [thinking, setThinking] = useState(false)
@@ -36,7 +37,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!state.preferences.autoSync) return
+    if (!state.preferences.autoSync || !state.preferences.apiBase.trim()) return
     let stopped = false
     const sync = async () => {
       const current = stateRef.current
@@ -69,6 +70,7 @@ function App() {
     setThinking(true)
     try {
       const configuredBase = state.preferences.apiBase.trim().replace(/\/$/, '')
+      if (!configuredBase) throw new Error('Using local Scout')
       const base = configuredBase || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '')
       const response = await fetch(`${base}/api/assistant`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Bigfoot-Token': state.preferences.companionToken },
@@ -79,21 +81,30 @@ function App() {
       setState(s => ({ ...s, chat: [...s.chat, { role: 'assistant', text: data.text }] }))
       speak(data.text, state.preferences.voice)
     } catch {
-      const reply = localAssistant(text, state)
-      setState(s => ({ ...s, chat: [...s.chat, { role: 'assistant', text: reply }] }))
-      speak(reply, state.preferences.voice)
+      const result = localAssistant(text, stateRef.current)
+      setState(s => ({ ...s, ...result.changes, chat: [...s.chat, { role: 'assistant', text: result.reply }] }))
+      speak(result.reply, state.preferences.voice)
     } finally { setThinking(false) }
   }
 
-  function startListening() {
+  async function startListening() {
     setListening(true)
     const supported = listen(text => askAssistant(text), () => setListening(false))
-    if (!supported) notify('Voice input is not available on this device yet.')
+    if (supported) return
+    const text = await requestVoiceInput()
+    setListening(false)
+    if (text) await askAssistant(text)
+    else notify('I didn’t hear anything. Tap the microphone and try again.')
   }
 
   async function toggleLiveVoice() {
     if (realtimeRef.current) {
       realtimeRef.current.stop(); realtimeRef.current = null; setLiveVoice(false); notify('Live conversation ended.'); return
+    }
+    if (!state.preferences.apiBase.trim()) {
+      setSection('assistant')
+      await startListening()
+      return
     }
     try {
       setSection('assistant')
@@ -108,8 +119,13 @@ function App() {
     } catch { setLiveVoice(false); notify('Live Scout could not connect. Check Settings and microphone permission.') }
   }
 
+  async function launchChatGPT() {
+    const opened = await openChatGPT()
+    if (!opened) notify('ChatGPT could not open. Install the official ChatGPT app and try again.')
+  }
+
   const rootClass = `${state.preferences.largeText ? 'large-text' : ''} ${state.preferences.highContrast ? 'high-contrast' : ''}`
-  if (showSetup) return <SetupWizard state={state} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); setShowSetup(false); setSection('home') }} />
+  if (showSetup) return <SetupWizard state={state} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut(); setShowSetup(false); setSection('home') }} />
   return <div className={`app ${rootClass}`}>
     <header className="topbar">
       <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
@@ -120,15 +136,15 @@ function App() {
 
     <div className="layout">
       <nav className="sidebar" aria-label="Main navigation">
-        {(Object.keys(label) as Section[]).map(key => <button key={key} className={section === key ? 'active' : ''} onClick={() => setSection(key)}>
+        {(Object.keys(label) as Section[]).filter(key => key !== 'email' || Boolean(state.preferences.apiBase.trim())).map(key => <button key={key} className={section === key ? 'active' : ''} onClick={() => setSection(key)}>
           <span className="nav-icon">{icon[key]}</span><span>{label[key]}</span>
         </button>)}
         <div className="help-card"><b>Need help?</b><span>Say “Scout, help me.”</span><button onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live talk' : 'Talk to Scout'}</button></div>
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
-        {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} openChatGPT={launchChatGPT} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
         {section === 'people' && <People people={state.people} onChange={people => patch({ people })} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
@@ -146,7 +162,6 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
   const [step, setStep] = useState(0)
   const [reminderStatus, setReminderStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
   const [callerStatus, setCallerStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'connected' | 'not-connected'>('idle')
   const [googleStatus, setGoogleStatus] = useState<'idle' | 'connected' | 'not-connected'>('idle')
   const p = state.preferences
   const rootClass = `${p.largeText ? 'large-text' : ''} ${p.highContrast ? 'high-contrast' : ''}`
@@ -157,7 +172,7 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
     'Choose what is easiest for you to see and hear. You can use larger text, high contrast, and spoken answers.',
     'Reminders let Bigfoot’s Day tell you when something on your list needs attention. Android will ask for permission before notifications are turned on.',
     'Caller ID lets Bigfoot’s Day announce who is calling when the phone can identify the number. Android will ask you to approve caller identification and contacts access.',
-    'This step connects the phone to your private assistant service, Gmail, and Google Calendar. If you do not have the connection information yet, you can do this later.',
+    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Scout'} can help with Gmail and your calendar. Bigfoot’s Day will never ask you to type your Google password into the app.` : 'Scout is ready for everyday help. If you need a more detailed answer, tap More Help and continue speaking.',
     `Setup is finished. ${p.assistantName || 'Scout'} is ready to help. You can run this setup guide again any time from Settings.`,
   ]
 
@@ -169,17 +184,6 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
   async function enableCallerId() {
     const granted = await requestCallerIdAccess()
     setCallerStatus(granted ? 'granted' : 'not-granted')
-  }
-
-  async function testConnection() {
-    const base = p.apiBase.trim().replace(/\/$/, '')
-    if (!base) { setConnectionStatus('not-connected'); return }
-    setConnectionStatus('checking')
-    try {
-      const health = await fetch(`${base}/api/health`)
-      const sync = await fetch(`${base}/api/sync`, { headers: { 'X-Bigfoot-Token': p.companionToken } })
-      setConnectionStatus(health.ok && sync.ok ? 'connected' : 'not-connected')
-    } catch { setConnectionStatus('not-connected') }
   }
 
   async function connectGoogle() {
@@ -209,26 +213,26 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
 
         {step === 4 && <div className="setup-content"><span className="eyebrow">CALLER ID</span><h1>Let Bigfoot’s Day tell you who is calling.</h1><p className="setup-lead">When a call comes in, Bigfoot’s Day can announce the person’s name when it recognizes the number.</p><div className="setup-permission"><span>☎</span><div><b>You may see two Android questions.</b><p>Choose Bigfoot’s Day for caller identification, then allow contacts so names can be recognized.</p></div></div><button className="setup-action" onClick={() => void enableCallerId()}>Turn on caller ID</button>{callerStatus === 'granted' && <div className="setup-success">✓ Caller identification is turned on.</div>}{callerStatus === 'not-granted' && <div className="setup-later">Caller ID is not on yet. No problem — you can do this later.</div>}</div>}
 
-        {step === 5 && <div className="setup-content"><span className="eyebrow">OPTIONAL CONNECTIONS</span><h1>Connect your assistant services.</h1><p className="setup-lead">This lets {p.assistantName || 'Scout'} use your private AI service, sync with your companion, and connect Gmail and Google Calendar.</p><div className="setup-permission"><span>🔒</span><div><b>If someone is helping you set this up</b><p>Ask them for the “companion address” and “private code.” If you don’t have them, tap <strong>Do this later</strong>.</p></div></div><label className="setup-label">Companion address<input value={p.apiBase} onChange={e => { setPref('apiBase', e.target.value); setConnectionStatus('idle') }} placeholder="Example: http://192.168.1.25:8787" autoCapitalize="none" /></label><label className="setup-label">Private code<input type="password" value={p.companionToken} onChange={e => { setPref('companionToken', e.target.value); setConnectionStatus('idle') }} placeholder="Private connection code" autoComplete="off" /></label><div className="setup-inline-actions"><button className="setup-action" onClick={() => void testConnection()}>{connectionStatus === 'checking' ? 'Checking…' : 'Check connection'}</button>{connectionStatus === 'connected' && <button className="setup-action secondary-action" onClick={() => void connectGoogle()}>Connect Gmail & Calendar</button>}</div>{connectionStatus === 'connected' && <div className="setup-success">✓ Your assistant service is connected.</div>}{connectionStatus === 'not-connected' && <div className="setup-later">Not connected yet. Check the address and private code, or do this later.</div>}{googleStatus === 'connected' && <div className="setup-success">✓ Google sign-in opened. Finish it, then come back here.</div>}{googleStatus === 'not-connected' && <div className="setup-later">Google is not ready yet. You can connect it later in Settings.</div>}</div>}
+        {step === 5 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Scout to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Scout'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Bigfoot’s Day will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to Bigfoot’s Day.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up Bigfoot’s Day and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Scout can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Scout for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>We’ve kept this simple.</b><p>You will not need to enter technical settings or connection codes.</p></div></div><div className="setup-success">✓ Your assistant is ready.</div></div>)}
 
-        {step === 6 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">ALL DONE</span><h1>You’re ready to use Bigfoot’s Day.</h1><p className="setup-lead">Start simple. Tap the microphone and talk to {p.assistantName || 'Scout'} just like you would talk to a person.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🔊</span><b>{p.voice ? 'Voice on' : 'Voice off'}</b><small>Spoken answers</small></div><div><span>🔔</span><b>{reminderStatus === 'granted' ? 'Reminders on' : 'Can do later'}</b><small>Notifications</small></div><div><span>☎</span><b>{callerStatus === 'granted' ? 'Caller ID on' : 'Can do later'}</b><small>Incoming calls</small></div></div><p className="setup-tip">You can run this guided setup again any time from Settings.</p></div>}
+        {step === 6 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">ALL DONE</span><h1>You’re ready to use Bigfoot’s Day.</h1><p className="setup-lead">Start simple. Tap the microphone and talk to {p.assistantName || 'Scout'} just like you would talk to a person.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🔊</span><b>{p.voice ? 'Voice on' : 'Voice off'}</b><small>Spoken answers</small></div><div><span>🔔</span><b>{reminderStatus === 'granted' ? 'Reminders on' : 'Can do later'}</b><small>Notifications</small></div><div><span>⌂</span><b>Home screen icon</b><small>We’ll ask Samsung to add it next</small></div></div><p className="setup-tip">You can run this guided setup again any time from Settings.</p></div>}
 
         <button className="setup-read" onClick={() => speak(readCopy[step], true)}>🔊 Read this screen to me</button>
       </section>
-      <div className="setup-nav">{step > 0 ? <button className="setup-back" onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button> : <span />}{step < 6 ? <button className="setup-next" onClick={() => setStep(s => Math.min(6, s + 1))}>{step >= 3 && ((step === 3 && reminderStatus !== 'granted') || (step === 4 && callerStatus !== 'granted') || (step === 5 && connectionStatus !== 'connected')) ? 'Do this later →' : 'Continue →'}</button> : <button className="setup-next finish" onClick={onFinish}>Start using Bigfoot’s Day</button>}</div>
+      <div className="setup-nav">{step > 0 ? <button className="setup-back" onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button> : <span />}{step < 6 ? <button className="setup-next" onClick={() => setStep(s => Math.min(6, s + 1))}>{step >= 3 && ((step === 3 && reminderStatus !== 'granted') || (step === 4 && callerStatus !== 'granted') || (step === 5 && p.apiBase.trim() && googleStatus !== 'connected')) ? 'Do this later →' : 'Continue →'}</button> : <button className="setup-next finish" onClick={onFinish}>Start using Bigfoot’s Day</button>}</div>
       <p className="setup-footer">Take your time. Nothing here has to be perfect.</p>
     </main>
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<void>; openChatGPT: () => Promise<void>; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   return <div className="page home-page">
-    <section className="welcome"><div><span className="eyebrow">{timeGreeting()}, {name}</span><h1>Here’s your day.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of.` : 'Your list is clear. Nice work.'}</p></div><div className="bigfoot-mark">🐾</div></section>
+    <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">SCOUT // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> SCOUT IS READY</div></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a live conversation with Scout"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>SCOUT</b><small>TAP TO TALK</small></span></button></section>
     <div className="quick-grid">
-      <button className="quick primary" onClick={() => ask('Manage my day. Check today’s Google Calendar, my important recent Gmail, and my open list. Tell me what needs attention first, what is next, and anything I should not forget. Keep it short and easy to follow.')}><span>☀</span><b>Manage my day</b><small>Calendar, email and your list — one simple plan.</small></button>
+      <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
-      <button className="quick" onClick={() => go('email')}><span>✉</span><b>Important email</b><small>Read messages and see suggested replies.</small></button>
+      <button className="quick chatgpt-quick" onClick={() => void openChatGPT()}><span>✦</span><b>More Help</b><small>Get help with a detailed question.</small></button>
       <button className="quick" onClick={() => go('people')}><span>☎</span><b>Call someone</b><small>{lastCaller || `${state.people.filter(p => !p.deleted).length} people saved`}</small></button>
     </div>
     <section className="panel today-panel"><div className="panel-head"><div><span className="eyebrow">TODAY</span><h2>Your short list</h2></div><button className="text-button" onClick={() => go('tasks')}>See all →</button></div>
@@ -238,14 +242,16 @@ function Home({ state, todayTasks, lastCaller, go, ask, toggleTask }: { state: A
   </div>
 }
 
-function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleLiveVoice }: { state: AppState; thinking: boolean; listening: boolean; liveVoice: boolean; ask: (s: string) => void; listen: () => void; toggleLiveVoice: () => Promise<void> }) {
+function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleLiveVoice, openChatGPT }: { state: AppState; thinking: boolean; listening: boolean; liveVoice: boolean; ask: (s: string) => void; listen: () => void; toggleLiveVoice: () => Promise<void>; openChatGPT: () => Promise<void> }) {
   const [input, setInput] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
   useEffect(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), [state.chat, thinking])
   function submit(e: FormEvent) { e.preventDefault(); if (input.trim()) { ask(input); setInput('') } }
-  return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Scout'}</h1><p>Ask naturally. You don’t need special commands.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : 'Start live conversation'}</button></div>
+  const localMode = !state.preferences.apiBase.trim()
+  return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Scout'}</h1><p>Ask naturally about your list, notes, people and day.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : localMode ? 'Talk to Scout' : 'Start live conversation'}</button></div>
+    {localMode && <section className="panel chatgpt-bridge"><div><span className="eyebrow">MORE HELP</span><h2>Need a more detailed answer?</h2><p>Tap the button and continue speaking.</p></div><button onClick={() => void openChatGPT()}>✦ Continue</button></section>}
     <div className="chat panel">{state.chat.slice(-20).map((m, i) => <div key={i} className={`bubble ${m.role}`}><small>{m.role === 'assistant' ? state.preferences.assistantName : 'You'}</small>{m.text}</div>)}{thinking && <div className="bubble assistant thinking">Scout is thinking <i>•••</i></div>}<div ref={bottom} /></div>
-    <div className="suggestions"><button onClick={() => ask('Manage my day: check today’s calendar, important email, and my list, then tell me what to do first.')}>Manage my day</button><button onClick={() => ask('What is next on my Google Calendar today?')}>What’s next?</button><button onClick={() => ask('Summarize my most important recent Gmail messages and tell me which need a reply.')}>Important email</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
+    <div className="suggestions"><button onClick={() => ask('Manage my day using my open list and notes. Tell me what to do first.')}>Manage my day</button><button onClick={() => ask('Add call the doctor to my list')}>Add to my list</button><button onClick={() => ask('What can you help me with?')}>What can Scout do?</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
     <form className="ask-box" onSubmit={submit}><button type="button" className={listening ? 'listening' : ''} onClick={listen}>🎙</button><input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask Scout anything…" aria-label="Ask Scout" /><button className="send">Send</button></form>
   </div>
 }
@@ -369,8 +375,8 @@ function Settings({ state, onChange, notify, onRunSetup, onReset }: { state: App
     <section className="panel setup-again"><div><h2>Need help setting things up?</h2><p>We can walk through setup together again, one step at a time. Your saved information will stay here.</p></div><button onClick={onRunSetup}>Run Easy Setup Again</button></section>
     <section className="panel settings-group"><h2>You & Scout</h2><label>Your first name<input value={p.userName} onChange={e => set('userName', e.target.value)} /></label><label>Assistant name<input value={p.assistantName} onChange={e => set('assistantName', e.target.value)} /></label></section>
     <section className="panel settings-group"><h2>Easy to see & hear</h2><Toggle label="Speak answers out loud" value={p.voice} set={v => set('voice', v)} /><Toggle label="Use larger text" value={p.largeText} set={v => set('largeText', v)} /><Toggle label="Extra-high contrast" value={p.highContrast} set={v => set('highContrast', v)} /></section>
-    <section className="panel settings-group"><h2>Assistant connection & sync</h2><p className="hint">On Windows, leave the address blank. On Android, enter the address shown by your Bigfoot’s Day companion service.</p><label>Companion service address<input value={p.apiBase} onChange={e => set('apiBase', e.target.value)} placeholder="Example: http://192.168.1.25:8787" /></label><label>Private connection code<input type="password" value={p.companionToken} onChange={e => set('companionToken', e.target.value)} placeholder="Your private code" autoComplete="off" /></label><Toggle label="Keep PC and phone automatically in sync" value={p.autoSync} set={v => set('autoSync', v)} /><div className="connection-row"><span className="status-dot" /> OpenAI-ready companion service</div><div className="sync-actions"><button onClick={() => void sync('save')}>Sync my changes now</button><button onClick={() => void sync('load')}>Get latest now</button></div></section>
-    <GoogleConnection apiBase={p.apiBase} companionToken={p.companionToken} notify={notify} />
+    {p.apiBase.trim() && <GoogleConnection apiBase={p.apiBase} companionToken={p.companionToken} notify={notify} />}
+    <details className="panel settings-group advanced-settings"><summary>Settings for a helper</summary><p className="hint">Most people never need to open this section.</p><label>Assistant service address<input value={p.apiBase} onChange={e => set('apiBase', e.target.value)} placeholder="Service address" /></label><label>Private connection code<input type="password" value={p.companionToken} onChange={e => set('companionToken', e.target.value)} placeholder="Private code" autoComplete="off" /></label><Toggle label="Keep devices automatically in sync" value={p.autoSync} set={v => set('autoSync', v)} /><div className="sync-actions"><button onClick={() => void sync('save')}>Save to companion</button><button onClick={() => void sync('load')}>Load from companion</button></div></details>
     <section className="panel danger-zone"><h2>Start over</h2><p>This clears your tasks, contacts, notes and preferences on this device.</p><button onClick={onReset}>Reset this device</button></section>
   </div>
 }
@@ -405,16 +411,58 @@ function normalizePhone(v: string) { return v.replace(/\D/g, '').slice(-10) }
 function getCompanionBase(value: string) { return value.trim().replace(/\/$/, '') || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '') }
 function formatEmailDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }
 
-function localAssistant(text: string, state: AppState) {
-  const q = text.toLowerCase()
+type LocalAssistantResult = { reply: string; changes?: Partial<AppState> }
+
+function localAssistant(text: string, state: AppState): LocalAssistantResult {
+  const q = text.toLowerCase().trim()
+  const now = new Date()
+  const stamp = now.toISOString()
+  const today = stamp.slice(0, 10)
   const open = state.tasks.filter(t => !t.deleted && !t.done)
-  if (/brief|today|focus|list|need to do/.test(q)) {
-    if (!open.length) return "Your list is clear right now. You’re all caught up."
-    const top = open.sort((a, b) => Number(b.important) - Number(a.important)).slice(0, 4).map((t, i) => `${i + 1}, ${t.text}`).join('. ')
-    return `Here’s what I’d focus on. ${top}. Take them one at a time.`
+
+  const addTask = text.match(/^(?:please\s+)?(?:add|put)\s+(.+?)(?:\s+to\s+(?:my\s+)?list)$/i)
+    || text.match(/^(?:please\s+)?(?:remind me to|remember to)\s+(.+)$/i)
+  if (addTask?.[1]?.trim()) {
+    const taskText = addTask[1].trim().replace(/[.!?]+$/, '')
+    const task: Task = { id: uid(), text: taskText, due: today, done: false, important: false, updatedAt: stamp }
+    return { reply: `Done. I added ${taskText} to today’s list.`, changes: { tasks: [task, ...state.tasks] } }
   }
-  if (/who.*call|contact|phone/.test(q)) { const count = state.people.filter(p => !p.deleted).length; return count ? `You have ${count} people saved. Open People and I’ll keep them easy to reach.` : 'You have no people saved yet. Open People and add the people you call most.' }
-  return "I can still help with your list, contacts, notes, and today’s briefing while the AI connection is offline. For a full answer to that question, connect the Bigfoot’s Day companion service in Settings."
+
+  const noteMatch = text.match(/^(?:please\s+)?(?:make|save|write)\s+(?:a\s+)?note(?:\s+that|\s+saying|\s+to)?\s+(.+)$/i)
+  if (noteMatch?.[1]?.trim()) {
+    const noteText = noteMatch[1].trim().replace(/[.!?]+$/, '')
+    const note = { id: uid(), text: noteText, createdAt: stamp, updatedAt: stamp }
+    return { reply: `I saved your note: ${noteText}.`, changes: { notes: [note, ...state.notes] } }
+  }
+
+  const completeMatch = text.match(/^(?:please\s+)?(?:finish|complete|mark)\s+(.+?)(?:\s+(?:as\s+)?done)?$/i)
+  if (completeMatch?.[1]?.trim()) {
+    const search = completeMatch[1].trim().toLowerCase()
+    const found = open.find(t => t.text.toLowerCase().includes(search) || search.includes(t.text.toLowerCase()))
+    if (!found) return { reply: `I couldn’t find ${completeMatch[1].trim()} on your open list.` }
+    return { reply: `Done. I marked ${found.text} complete.`, changes: { tasks: state.tasks.map(t => t.id === found.id ? { ...t, done: true, updatedAt: stamp } : t) } }
+  }
+
+  if (/\b(?:what(?:'s| is) the time|time is it)\b/.test(q)) {
+    return { reply: `It is ${now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.` }
+  }
+  if (/\b(?:what(?:'s| is) (?:the )?date|what day is it)\b/.test(q)) {
+    return { reply: `Today is ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.` }
+  }
+  if (/help|what can you do/.test(q)) {
+    return { reply: 'I can manage your day, read your list, add a task, complete a task, save a note, tell the time, and help you find your saved people. For example, say: add call the doctor to my list.' }
+  }
+  if (/brief|today|focus|list|need to do|manage my day|what.*next/.test(q)) {
+    if (!open.length) return { reply: 'Your list is clear right now. You’re all caught up.' }
+    const top = [...open].sort((a, b) => Number(b.important) - Number(a.important)).slice(0, 4).map((t, i) => `${i + 1}, ${t.text}`).join('. ')
+    const notes = state.notes.filter(n => !n.deleted).length
+    return { reply: `Here’s what I’d focus on. ${top}. ${notes ? `You also have ${notes} saved note${notes === 1 ? '' : 's'}.` : ''} Take things one at a time.` }
+  }
+  if (/who.*call|contact|phone|people/.test(q)) {
+    const count = state.people.filter(p => !p.deleted).length
+    return { reply: count ? `You have ${count} people saved. Open People to call someone.` : 'You have no people saved yet. Open People and add the people you call most.' }
+  }
+  return { reply: 'I can help with your list, notes, people and daily plan. For a detailed question, tap More Help.' }
 }
 
 export default App

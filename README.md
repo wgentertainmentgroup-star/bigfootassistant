@@ -1,6 +1,8 @@
-# Bigfoot's Day v0.2
+# Bigfoot's Day v0.5
 
 A local-first personal assistant designed for a single user, with a large, calm interface for Windows and Android.
+
+The normal Android test build works without a developer account, service address, or private connection code.
 
 ## What works now
 

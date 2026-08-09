@@ -1,6 +1,8 @@
 import type { AppState } from './types'
 
 const KEY = 'bigfoots-day-state-v1'
+const serviceBase = (import.meta.env.VITE_BIGFOOT_API_BASE || '').trim().replace(/\/$/, '')
+const appToken = (import.meta.env.VITE_BIGFOOT_APP_TOKEN || '').trim()
 
 export const defaultState: AppState = {
   tasks: [
@@ -17,9 +19,9 @@ export const defaultState: AppState = {
     voice: true,
     largeText: true,
     highContrast: false,
-    apiBase: '',
-    companionToken: '',
-    autoSync: true,
+    apiBase: serviceBase,
+    companionToken: appToken,
+    autoSync: Boolean(serviceBase),
     setupComplete: false,
   },
 }
@@ -36,7 +38,12 @@ export function loadState(): AppState {
       tasks: (parsed.tasks || []).map(t => ({ ...t, updatedAt: t.updatedAt || stamp })),
       people: (parsed.people || []).map(p => ({ ...p, updatedAt: p.updatedAt || stamp })),
       notes: (parsed.notes || []).map(n => ({ ...n, updatedAt: n.updatedAt || n.createdAt || stamp })),
-      preferences: { ...defaultState.preferences, ...parsed.preferences },
+      preferences: {
+        ...defaultState.preferences,
+        ...parsed.preferences,
+        apiBase: serviceBase || parsed.preferences?.apiBase || '',
+        companionToken: appToken || parsed.preferences?.companionToken || '',
+      },
     }
   } catch {
     return defaultState
