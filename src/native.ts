@@ -3,6 +3,9 @@ import type { Person } from './types'
 import { LocalNotifications } from '@capacitor/local-notifications'
 
 type CallAssistant = {
+  requestHomeShortcut(): Promise<{ requested: boolean }>
+  startVoiceInput(): Promise<{ text: string }>
+  openChatGPT(): Promise<{ opened: boolean }>
   requestCallerIdAccess(): Promise<{ granted: boolean }>
   getLastCaller(): Promise<{ number: string; name: string; time: number }>
   setKnownPeople(options: { people: Array<{ name: string; phone: string }> }): Promise<void>
@@ -11,6 +14,24 @@ type CallAssistant = {
 const CallAssistantPlugin = registerPlugin<CallAssistant>('CallAssistant')
 
 export const isAndroid = () => Capacitor.getPlatform() === 'android'
+
+export async function requestHomeShortcut() {
+  if (!isAndroid()) return false
+  try { return (await CallAssistantPlugin.requestHomeShortcut()).requested } catch { return false }
+}
+
+export async function requestVoiceInput() {
+  if (!isAndroid()) return ''
+  try { return (await CallAssistantPlugin.startVoiceInput()).text || '' } catch { return '' }
+}
+
+export async function openChatGPT() {
+  if (!isAndroid()) {
+    window.open('https://chatgpt.com/', '_blank', 'noopener,noreferrer')
+    return true
+  }
+  try { return (await CallAssistantPlugin.openChatGPT()).opened } catch { return false }
+}
 
 export async function requestCallerIdAccess() {
   if (!isAndroid()) return false
