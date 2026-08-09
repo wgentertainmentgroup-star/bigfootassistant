@@ -1,4 +1,5 @@
 name: Publish Bigfoot's Day Test APK
+# v0.8 release gate: web tests, Android emulator lifecycle test, then APK packaging.
 
 on:
   push:
