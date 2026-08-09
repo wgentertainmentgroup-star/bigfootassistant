@@ -127,7 +127,7 @@ function App() {
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
         {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
@@ -221,10 +221,10 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<void>; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   return <div className="page home-page">
-    <section className="welcome"><div><span className="eyebrow">{timeGreeting()}, {name}</span><h1>Here’s your day.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of.` : 'Your list is clear. Nice work.'}</p></div><div className="bigfoot-mark">🐾</div></section>
+    <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">SCOUT // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> SCOUT IS READY</div></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a live conversation with Scout"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>SCOUT</b><small>TAP TO TALK</small></span></button></section>
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Check today’s Google Calendar, my important recent Gmail, and my open list. Tell me what needs attention first, what is next, and anything I should not forget. Keep it short and easy to follow.')}><span>☀</span><b>Manage my day</b><small>Calendar, email and your list — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
