@@ -1,15 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { defaultState, loadState, saveState } from './storage'
-import { addVoiceStateListener, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
+import { addVoiceStateListener, cancelVoiceInput, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v0100'
-const appVersion = 'v0.10 E2E GATED'
+const setupMarker = 'bigfoots-day-easy-setup-v0110'
+const appVersion = 'v0.11 Z FOLD5 HARDENED'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -25,7 +25,20 @@ function placeConfirmedCall(name: string, phone: string) {
 async function captureVoiceOnce(): Promise<{ text: string; error: string }> {
   // Android must never use WebView SpeechRecognition. On some Samsung phones that
   // fallback opens an external blank speech surface instead of staying in the app.
-  if (isAndroidDevice()) return requestVoiceInput()
+  if (isAndroidDevice()) return new Promise(resolve => {
+    let finished = false
+    const finish = (result: { text: string; error: string }) => {
+      if (finished) return
+      finished = true
+      clearTimeout(watchdog)
+      resolve(result)
+    }
+    const watchdog = window.setTimeout(() => {
+      void cancelVoiceInput()
+      finish({ text: '', error: 'Voice listening took too long and was safely stopped. Tap the microphone to try again.' })
+    }, 12000)
+    void requestVoiceInput().then(finish)
+  })
   return new Promise(resolve => {
     let finished = false
     const done = (result: { text: string; error: string }) => {
@@ -61,6 +74,17 @@ function App() {
       setLastCaller(person ? `${person.name} called` : c.name ? `${c.name} called` : `${c.number} called`)
     })
   }, [])
+
+  useEffect(() => {
+    if (voiceUi.state === 'idle' || voiceUi.state === 'complete') return
+    const watchdog = window.setTimeout(() => {
+      void cancelVoiceInput()
+      setVoiceUi({ state: 'idle' })
+      setListening(false)
+      notify('Voice was safely stopped. The app is ready—tap the microphone to try again.')
+    }, 14000)
+    return () => clearTimeout(watchdog)
+  }, [voiceUi.state])
 
   useEffect(() => {
     if (!state.preferences.autoSync || !state.preferences.apiBase.trim()) return
@@ -149,6 +173,13 @@ function App() {
     return false
   }
 
+  async function stopListening() {
+    await cancelVoiceInput()
+    setVoiceUi({ state: 'idle' })
+    setListening(false)
+    notify('Voice listening stopped. You can try again whenever you are ready.')
+  }
+
   async function toggleLiveVoice() {
     if (realtimeRef.current) {
       realtimeRef.current.stop(); realtimeRef.current = null; setLiveVoice(false); notify('Live conversation ended.'); return true
@@ -177,7 +208,7 @@ function App() {
   }
 
   const rootClass = `${state.preferences.largeText ? 'large-text' : ''} ${state.preferences.highContrast ? 'high-contrast' : ''}`
-  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); setShowSetup(false); setSection('home') }} />
+  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onCancelVoice={stopListening} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); setShowSetup(false); setSection('home') }} />
   return <div className={`app ${rootClass}`}>
     <header className="topbar">
       <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
@@ -207,18 +238,18 @@ function App() {
     </div>
 
     <button className={`floating-mic ${liveVoice ? 'listening' : ''}`} onClick={() => void toggleLiveVoice()} aria-label="Talk to Bubba">🎙<span>{liveVoice ? 'End live talk' : 'Talk to Bubba'}</span></button>
-    <VoiceHud state={voiceUi} />
+    <VoiceHud state={voiceUi} onCancel={stopListening} />
     {toast && <div className="toast" role="status">{toast}</div>}
   </div>
 }
 
-function VoiceHud({ state }: { state: NativeVoiceState }) {
+function VoiceHud({ state, onCancel }: { state: NativeVoiceState; onCancel: () => Promise<void> }) {
   if (state.state === 'idle' || state.state === 'complete') return null
   const message = state.message || (state.state === 'hearing' ? 'I hear you…' : state.state === 'processing' ? 'Working on that…' : 'Listening…')
-  return <div className={`voice-hud ${state.state}`} role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>Speak normally. The app will stay on this screen.</small></div>
+  return <div className={`voice-hud ${state.state}`} data-testid="voice-hud" role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>Speak normally. The app will stay on this screen.</small><button className="voice-cancel" data-testid="voice-cancel" onClick={() => void onCancel()}>Stop listening</button></div>
 }
 
-function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; voiceUi: NativeVoiceState; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
+function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { state: AppState; voiceUi: NativeVoiceState; onCancelVoice: () => Promise<void>; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
   const [step, setStep] = useState(0)
   const [voiceTest, setVoiceTest] = useState<{ status: 'idle' | 'listening' | 'passed' | 'failed'; text: string }>({ status: 'idle', text: '' })
   const [reminderStatus, setReminderStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
@@ -276,8 +307,8 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
     } catch { setGoogleStatus('not-connected') }
   }
 
-  return <div className={`setup-shell ${rootClass}`}>
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.10</span></header>
+  return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
+    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.11</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -308,7 +339,7 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
       <div className="setup-nav">{step > 0 ? <button className="setup-back" onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button> : <span />}{step < 10 ? <button className="setup-next" onClick={() => setStep(s => Math.min(10, s + 1))}>{step === 4 && voiceTest.status !== 'passed' ? 'Test later →' : step >= 5 && ((step === 5 && reminderStatus !== 'granted') || (step === 6 && callerStatus !== 'granted') || (step === 7 && (!p.trustedHelperName || !p.trustedHelperPhone)) || (step === 8 && p.apiBase.trim() && googleStatus !== 'connected')) ? 'Do this later →' : 'Continue →'}</button> : <button className="setup-next finish" onClick={onFinish}>Begin my first lesson</button>}</div>
       <p className="setup-footer">Take your time. Nothing here has to be perfect.</p>
     </main>
-    <VoiceHud state={voiceUi} />
+    <VoiceHud state={voiceUi} onCancel={onCancelVoice} />
   </div>
 }
 
@@ -322,6 +353,10 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callH
   ][Math.min(3, state.preferences.learningStep)]
   return <div className="page home-page">
     <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div><small className="talk-example">Try saying: “What do I need to do today?”</small></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
+    <section className="media-launcher" aria-label="Camera and video">
+      <button className="media-button camera" data-testid="camera-button" onClick={() => ask('Open camera')}><span>▣</span><div><b>CAMERA</b><small>Take a photo</small></div></button>
+      <button className="media-button video" data-testid="video-button" onClick={() => ask('Open video camera')}><span>▶</span><div><b>VIDEO</b><small>Record a video</small></div></button>
+    </section>
     {state.preferences.learningStep < 4 ? <section className="panel learning-card"><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 4</small></div><button onClick={() => void lesson.run()}>{lesson.action}</button></section> : <section className="panel learning-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
@@ -329,8 +364,6 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callH
       <button className="quick" onClick={() => ask('Set a timer for 10 minutes')}><span>◷</span><b>10-minute timer</b><small>Open Samsung Clock and start a timer.</small></button>
       <button className="quick" onClick={() => ask('What is on my shopping list?')}><span>🛒</span><b>Shopping list</b><small>Add an item by telling Bubba.</small></button>
       <button className="quick" onClick={() => ask('Open maps')}><span>⌖</span><b>Maps</b><small>Find a place or get directions.</small></button>
-      <button className="quick" onClick={() => ask('Open camera')}><span>▣</span><b>Photo Camera</b><small>Open Samsung Camera for a picture.</small></button>
-      <button className="quick" onClick={() => ask('Open video camera')}><span>▶</span><b>Video Camera</b><small>Open Samsung Camera ready for video.</small></button>
       <button className="quick" onClick={() => go('people')}><span>☎</span><b>Call someone</b><small>{lastCaller || `${state.people.filter(p => !p.deleted).length} people saved`}</small></button>
       <button className="quick chatgpt-quick" onClick={() => void openChatGPT()}><span>✦</span><b>More Help</b><small>Get help with a detailed question.</small></button>
     </div>
