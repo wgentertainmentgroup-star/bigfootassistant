@@ -60,6 +60,16 @@ public class CallAssistantPlugin extends Plugin {
         startInAppSpeechRecognition(call);
     }
 
+    @PluginMethod
+    public void cancelVoiceInput(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            finishVoice("", "Voice listening was canceled.");
+            JSObject result = new JSObject();
+            result.put("canceled", true);
+            call.resolve(result);
+        });
+    }
+
     @PermissionCallback
     private void microphoneResult(PluginCall call) {
         if (getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED) {
