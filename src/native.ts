@@ -7,6 +7,11 @@ type CallAssistant = {
   startVoiceInput(): Promise<{ text: string; error?: string }>
   speakText(options: { text: string }): Promise<{ spoken: boolean; error?: string }>
   openChatGPT(): Promise<{ opened: boolean }>
+  setTimer(options: { seconds: number; label: string }): Promise<{ opened: boolean }>
+  setAlarm(options: { hour: number; minute: number; label: string }): Promise<{ opened: boolean }>
+  openMap(options: { query: string }): Promise<{ opened: boolean }>
+  openCamera(): Promise<{ opened: boolean }>
+  openDeviceSettings(): Promise<{ opened: boolean }>
   requestCallerIdAccess(): Promise<{ granted: boolean }>
   getLastCaller(): Promise<{ number: string; name: string; time: number }>
   setKnownPeople(options: { people: Array<{ name: string; phone: string }> }): Promise<void>
@@ -52,6 +57,23 @@ export async function openChatGPT() {
   }
   try { return (await CallAssistantPlugin.openChatGPT()).opened } catch { return false }
 }
+
+async function openNativeAction(action: () => Promise<{ opened: boolean }>) {
+  if (!isAndroid()) return false
+  try { return (await action()).opened } catch { return false }
+}
+
+export const setDeviceTimer = (seconds: number, label = "Bubba's timer") =>
+  openNativeAction(() => CallAssistantPlugin.setTimer({ seconds, label }))
+
+export const setDeviceAlarm = (hour: number, minute: number, label = "Bigfoot's Day alarm") =>
+  openNativeAction(() => CallAssistantPlugin.setAlarm({ hour, minute, label }))
+
+export const openMapSearch = (query: string) =>
+  openNativeAction(() => CallAssistantPlugin.openMap({ query }))
+
+export const openCamera = () => openNativeAction(() => CallAssistantPlugin.openCamera())
+export const openDeviceSettings = () => openNativeAction(() => CallAssistantPlugin.openDeviceSettings())
 
 export async function requestCallerIdAccess() {
   if (!isAndroid()) return false
