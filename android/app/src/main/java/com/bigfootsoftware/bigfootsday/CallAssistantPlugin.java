@@ -9,6 +9,7 @@ import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
 import androidx.activity.result.ActivityResult;
 
 import com.getcapacitor.JSObject;
@@ -20,6 +21,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.util.ArrayList;
+import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -31,6 +33,8 @@ import org.json.JSONObject;
     }
 )
 public class CallAssistantPlugin extends Plugin {
+    private TextToSpeech textToSpeech;
+
     @PluginMethod
     public void startVoiceInput(PluginCall call) {
         if (getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED) {
@@ -43,32 +47,90 @@ public class CallAssistantPlugin extends Plugin {
     @PermissionCallback
     private void microphoneResult(PluginCall call) {
         if (getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED) {
-            JSObject result = new JSObject();
-            result.put("text", "");
-            call.resolve(result);
+            resolveVoice(call, "", "Microphone permission was not allowed.");
             return;
         }
         launchSpeechInput(call);
     }
 
     private void launchSpeechInput(PluginCall call) {
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US");
-        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Scout");
-        startActivityForResult(call, intent, "speechResult");
+        try {
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag());
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.US.toLanguageTag());
+            intent.putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Bubba");
+            if (intent.resolveActivity(getContext().getPackageManager()) == null) {
+                resolveVoice(call, "", "No speech recognition service is enabled on this phone.");
+                return;
+            }
+            startActivityForResult(call, intent, "speechResult");
+        } catch (Exception error) {
+            resolveVoice(call, "", "Speech recognition could not start.");
+        }
     }
 
     @ActivityCallback
     private void speechResult(PluginCall call, ActivityResult result) {
         String text = "";
-        if (result.getData() != null) {
+        if (result.getResultCode() == android.app.Activity.RESULT_OK && result.getData() != null) {
             ArrayList<String> choices = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
             if (choices != null && !choices.isEmpty()) text = choices.get(0);
         }
+        resolveVoice(call, text, text.isEmpty() ? "Nothing was heard. Please try again." : "");
+    }
+
+    private void resolveVoice(PluginCall call, String text, String error) {
         JSObject response = new JSObject();
         response.put("text", text);
+        response.put("error", error);
         call.resolve(response);
+    }
+
+    @PluginMethod
+    public void speakText(PluginCall call) {
+        String text = call.getString("text", "").trim();
+        if (text.isEmpty()) {
+            resolveSpeech(call, false, "There is no text to speak.");
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            if (textToSpeech != null) textToSpeech.stop();
+            textToSpeech = new TextToSpeech(getContext().getApplicationContext(), status -> {
+                if (status != TextToSpeech.SUCCESS || textToSpeech == null) {
+                    resolveSpeech(call, false, "Android text-to-speech is not ready.");
+                    return;
+                }
+                int language = textToSpeech.setLanguage(Locale.US);
+                if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    resolveSpeech(call, false, "The English voice is not installed.");
+                    return;
+                }
+                textToSpeech.setSpeechRate(0.90f);
+                textToSpeech.setPitch(0.88f);
+                int queued = textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bigfoot-scout");
+                resolveSpeech(call, queued == TextToSpeech.SUCCESS, queued == TextToSpeech.SUCCESS ? "" : "Android could not play the voice.");
+            });
+        });
+    }
+
+    private void resolveSpeech(PluginCall call, boolean spoken, String error) {
+        JSObject response = new JSObject();
+        response.put("spoken", spoken);
+        response.put("error", error);
+        call.resolve(response);
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+            textToSpeech = null;
+        }
+        super.handleOnDestroy();
     }
 
     @PluginMethod
