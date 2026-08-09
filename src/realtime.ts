@@ -18,7 +18,7 @@ export async function startRealtimeVoice(options: {
   for (const track of stream.getTracks()) pc.addTrack(track, stream)
 
   const events = pc.createDataChannel('oai-events')
-  events.onopen = () => options.onStatus?.('Scout is listening')
+  events.onopen = () => options.onStatus?.('Bubba is listening')
   events.onmessage = event => {
     try {
       const message = JSON.parse(event.data)

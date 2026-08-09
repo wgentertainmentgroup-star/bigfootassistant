@@ -11,10 +11,13 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike
 
-export function speak(text: string, enabled = true) {
-  if (!enabled || !('speechSynthesis' in window)) return
+export async function speak(text: string, enabled = true) {
+  if (!enabled) return false
+  const clean = text.replace(/[*#]/g, '')
+  if (isAndroid() && await speakNative(clean)) return true
+  if (!('speechSynthesis' in window)) return false
   window.speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(text.replace(/[*#]/g, ''))
+  const utterance = new SpeechSynthesisUtterance(clean)
   utterance.rate = 0.91
   utterance.pitch = 0.90
   const voices = window.speechSynthesis.getVoices()
@@ -23,6 +26,7 @@ export function speak(text: string, enabled = true) {
     || voices.find(v => /David|Google US English/i.test(v.name))
   if (preferred) utterance.voice = preferred
   window.speechSynthesis.speak(utterance)
+  return true
 }
 
 export function listen(onText: (text: string) => void, onDone: () => void) {
@@ -39,3 +43,4 @@ export function listen(onText: (text: string) => void, onDone: () => void) {
   recognition.start()
   return true
 }
+import { isAndroid, speakNative } from './native'

@@ -7,6 +7,10 @@ on:
     paths:
       - .github/workflows/publish-test-apk-release.yml
       - android/app/build.gradle
+      - android/app/src/main/**
+      - src/**
+      - package.json
+      - package-lock.json
   workflow_dispatch:
 
 permissions:
@@ -50,14 +54,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.5-Samsung-Test.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.6-Bubba-Voice-Test.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.5.0-samsung-test \
-            Bigfoots-Day-v0.5-Samsung-Test.apk \
+          gh release create v0.6.0-bubba-voice-test \
+            Bigfoots-Day-v0.6-Bubba-Voice-Test.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.5 Samsung Test" \
-            --notes "Sideloadable test APK for Samsung Z Fold5. This build uses a fresh test package ID to avoid conflicts with earlier test installations."
+            --title "Bigfoot's Day v0.6 — Bubba Voice Repair" \
+            --notes "Samsung Z Fold5 test APK. Uses native Android speech recognition and text-to-speech, includes a real setup voice test, changes Scout to Bubba, and teaches one capability at a time. Fresh test package ID avoids conflicts with earlier builds."

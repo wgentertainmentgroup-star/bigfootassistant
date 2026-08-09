@@ -1,17 +1,31 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultState, loadState, saveState } from './storage'
-import { getLastCaller, openChatGPT, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, syncPeopleForCallerId } from './native'
+import { getLastCaller, isAndroid, openChatGPT, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, syncPeopleForCallerId } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
-const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Scout', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v5'
+const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
+const setupMarker = 'bigfoots-day-easy-setup-v6'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
 function timeGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
+
+async function captureVoiceOnce(): Promise<{ text: string; error: string }> {
+  if (isAndroid()) return requestVoiceInput()
+  return new Promise(resolve => {
+    let finished = false
+    const done = (result: { text: string; error: string }) => {
+      if (finished) return
+      finished = true
+      resolve(result)
+    }
+    const supported = listen(text => done({ text, error: '' }), () => done({ text: '', error: 'Nothing was heard. Please try again.' }))
+    if (!supported) done({ text: '', error: 'Voice input is not supported on this device.' })
+  })
+}
 
 function App() {
   const [state, setState] = useState<AppState>(() => loadState())
@@ -70,7 +84,7 @@ function App() {
     setThinking(true)
     try {
       const configuredBase = state.preferences.apiBase.trim().replace(/\/$/, '')
-      if (!configuredBase) throw new Error('Using local Scout')
+      if (!configuredBase) throw new Error('Using local Bubba')
       const base = configuredBase || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '')
       const response = await fetch(`${base}/api/assistant`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Bigfoot-Token': state.preferences.companionToken },
@@ -89,12 +103,10 @@ function App() {
 
   async function startListening() {
     setListening(true)
-    const supported = listen(text => askAssistant(text), () => setListening(false))
-    if (supported) return
-    const text = await requestVoiceInput()
+    const result = await captureVoiceOnce()
     setListening(false)
-    if (text) await askAssistant(text)
-    else notify('I didn’t hear anything. Tap the microphone and try again.')
+    if (result.text) await askAssistant(result.text)
+    else notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
   }
 
   async function toggleLiveVoice() {
@@ -108,15 +120,15 @@ function App() {
     }
     try {
       setSection('assistant')
-      notify('Starting live Scout…')
+      notify('Starting live Bubba…')
       realtimeRef.current = await startRealtimeVoice({
         apiBase: state.preferences.apiBase,
         companionToken: state.preferences.companionToken,
-        onStatus: () => { setLiveVoice(true); notify('Scout is listening. Just speak naturally.') },
+        onStatus: () => { setLiveVoice(true); notify('Bubba is listening. Just speak naturally.') },
         onAssistantText: text => setState(s => ({ ...s, chat: [...s.chat, { role: 'assistant', text }] })),
       })
       setLiveVoice(true)
-    } catch { setLiveVoice(false); notify('Live Scout could not connect. Check Settings and microphone permission.') }
+    } catch { setLiveVoice(false); notify('Live Bubba could not connect. Check Settings and microphone permission.') }
   }
 
   async function launchChatGPT() {
@@ -139,11 +151,11 @@ function App() {
         {(Object.keys(label) as Section[]).filter(key => key !== 'email' || Boolean(state.preferences.apiBase.trim())).map(key => <button key={key} className={section === key ? 'active' : ''} onClick={() => setSection(key)}>
           <span className="nav-icon">{icon[key]}</span><span>{label[key]}</span>
         </button>)}
-        <div className="help-card"><b>Need help?</b><span>Say “Scout, help me.”</span><button onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live talk' : 'Talk to Scout'}</button></div>
+        <div className="help-card"><b>Need help?</b><span>Say “Bubba, help me.”</span><button onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live talk' : 'Talk to Bubba'}</button></div>
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} openChatGPT={launchChatGPT} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} openChatGPT={launchChatGPT} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(4, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
         {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
@@ -153,13 +165,14 @@ function App() {
       </main>
     </div>
 
-    <button className={`floating-mic ${liveVoice ? 'listening' : ''}`} onClick={() => void toggleLiveVoice()} aria-label="Talk to Scout">🎙<span>{liveVoice ? 'End live talk' : 'Talk to Scout'}</span></button>
+    <button className={`floating-mic ${liveVoice ? 'listening' : ''}`} onClick={() => void toggleLiveVoice()} aria-label="Talk to Bubba">🎙<span>{liveVoice ? 'End live talk' : 'Talk to Bubba'}</span></button>
     {toast && <div className="toast" role="status">{toast}</div>}
   </div>
 }
 
 function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
   const [step, setStep] = useState(0)
+  const [voiceTest, setVoiceTest] = useState<{ status: 'idle' | 'listening' | 'passed' | 'failed'; text: string }>({ status: 'idle', text: '' })
   const [reminderStatus, setReminderStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
   const [callerStatus, setCallerStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
   const [googleStatus, setGoogleStatus] = useState<'idle' | 'connected' | 'not-connected'>('idle')
@@ -168,13 +181,27 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
   const setPref = (key: keyof typeof p, value: string | boolean) => onChange({ ...state, preferences: { ...p, [key]: value } })
   const readCopy = [
     "Welcome to Bigfoot's Day. I will walk you through setup one simple step at a time. You can go back, or do optional steps later.",
-    `Let's make this personal. Your name is ${p.userName || 'not entered yet'}, and your assistant is named ${p.assistantName || 'Scout'}.`,
+    `Let's make this personal. Your name is ${p.userName || 'not entered yet'}, and your assistant is named ${p.assistantName || 'Bubba'}.`,
     'Choose what is easiest for you to see and hear. You can use larger text, high contrast, and spoken answers.',
+    `Now we will test the microphone and speaker. Tap Test my voice, say hello ${p.assistantName || 'Bubba'}, and listen for the reply.`,
     'Reminders let Bigfoot’s Day tell you when something on your list needs attention. Android will ask for permission before notifications are turned on.',
     'Caller ID lets Bigfoot’s Day announce who is calling when the phone can identify the number. Android will ask you to approve caller identification and contacts access.',
-    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Scout'} can help with Gmail and your calendar. Bigfoot’s Day will never ask you to type your Google password into the app.` : 'Scout is ready for everyday help. If you need a more detailed answer, tap More Help and continue speaking.',
-    `Setup is finished. ${p.assistantName || 'Scout'} is ready to help. You can run this setup guide again any time from Settings.`,
+    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Bubba'} can help with Gmail and your calendar. Bigfoot’s Day will never ask you to type your Google password into the app.` : 'Bubba is ready for everyday help. If you need a more detailed answer, tap More Help and continue speaking.',
+    'You will learn one skill at a time: talking to Bubba, managing your list, saving notes, using reminders and caller identification, and opening ChatGPT for more detailed help.',
+    `Setup is finished. ${p.assistantName || 'Bubba'} is ready to help. You can run this setup guide again any time from Settings.`,
   ]
+
+  async function testVoice() {
+    setVoiceTest({ status: 'listening', text: '' })
+    const result = await captureVoiceOnce()
+    if (!result.text) {
+      setVoiceTest({ status: 'failed', text: result.error || 'Nothing was heard.' })
+      return
+    }
+    const reply = `I heard you say, ${result.text}. Your microphone and my voice are working.`
+    const spoken = await speak(reply, true)
+    setVoiceTest({ status: spoken ? 'passed' : 'failed', text: spoken ? result.text : 'I heard you, but Android could not play the spoken reply. Check the phone’s media volume and text-to-speech settings.' })
+  }
 
   async function enableReminders() {
     const granted = await requestNotificationAccess()
@@ -201,34 +228,45 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
   return <div className={`setup-shell ${rootClass}`}>
     <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup</span></header>
     <main className="setup-main">
-      <div className="setup-progress" aria-label={`Setup step ${step + 1} of 7`}><div className="setup-progress-copy"><b>Step {step + 1} of 7</b><span>{['Welcome', 'About you', 'See & hear', 'Reminders', 'Caller ID', 'Connections', 'Ready'][step]}</span></div><div className="setup-progress-track"><i style={{ width: `${((step + 1) / 7) * 100}%` }} /></div></div>
+      <div className="setup-progress" aria-label={`Setup step ${step + 1} of 9`}><div className="setup-progress-copy"><b>Step {step + 1} of 9</b><span>{['Welcome', 'About you', 'See & hear', 'Voice test', 'Reminders', 'Caller ID', 'Connections', 'Learning', 'Ready'][step]}</span></div><div className="setup-progress-track"><i style={{ width: `${((step + 1) / 9) * 100}%` }} /></div></div>
       <section className="setup-card">
         {step === 0 && <div className="setup-content center"><div className="setup-paw">🐾</div><span className="eyebrow">WELCOME</span><h1>Let’s set up Bigfoot’s Day together.</h1><p className="setup-lead">I’ll walk you through it one simple step at a time. There is no rush.</p><div className="setup-reassurance">✓ You can go back at any time.<br />✓ Optional steps can be done later.<br />✓ Nothing important is sent without your approval.</div></div>}
 
-        {step === 1 && <div className="setup-content"><span className="eyebrow">MAKE IT PERSONAL</span><h1>What should we call you?</h1><p className="setup-lead">This helps your assistant speak to you naturally.</p><label className="setup-label">Your first name<input autoFocus value={p.userName} onChange={e => setPref('userName', e.target.value)} placeholder="Your first name" /></label><label className="setup-label">Your assistant’s name<input value={p.assistantName} onChange={e => setPref('assistantName', e.target.value)} placeholder="Scout" /></label><p className="setup-tip">Tip: “Scout” is the standard name, but you can choose any name you like.</p></div>}
+        {step === 1 && <div className="setup-content"><span className="eyebrow">MAKE IT PERSONAL</span><h1>What should we call you?</h1><p className="setup-lead">This helps your assistant speak to you naturally.</p><label className="setup-label">Your first name<input autoFocus value={p.userName} onChange={e => setPref('userName', e.target.value)} placeholder="Your first name" /></label><label className="setup-label">Your assistant’s name<input value={p.assistantName} onChange={e => setPref('assistantName', e.target.value)} placeholder="Bubba" /></label><p className="setup-tip">Tip: “Bubba” is the standard name, but you can choose any name you like.</p></div>}
 
-        {step === 2 && <div className="setup-content"><span className="eyebrow">COMFORT</span><h1>Make it easy to see and hear.</h1><p className="setup-lead">Tap the choices that feel best. You can change these later.</p><button className={`setup-choice ${p.largeText ? 'selected' : ''}`} onClick={() => setPref('largeText', !p.largeText)}><span>🔎</span><div><b>Larger text</b><small>{p.largeText ? 'On — keep text larger' : 'Off — use standard text size'}</small></div><em>{p.largeText ? 'ON' : 'OFF'}</em></button><button className={`setup-choice ${p.highContrast ? 'selected' : ''}`} onClick={() => setPref('highContrast', !p.highContrast)}><span>◐</span><div><b>Extra-high contrast</b><small>Makes words and controls stand out more</small></div><em>{p.highContrast ? 'ON' : 'OFF'}</em></button><button className={`setup-choice ${p.voice ? 'selected' : ''}`} onClick={() => setPref('voice', !p.voice)}><span>🔊</span><div><b>Speak answers out loud</b><small>{p.assistantName || 'Scout'} can read answers to you</small></div><em>{p.voice ? 'ON' : 'OFF'}</em></button><button className="setup-test" onClick={() => speak(`Hi ${p.userName || 'there'}. I’m ${p.assistantName || 'Scout'}. This is how I sound.`, true)}>🔊 Hear a voice sample</button></div>}
+        {step === 2 && <div className="setup-content"><span className="eyebrow">COMFORT</span><h1>Make it easy to see and hear.</h1><p className="setup-lead">Tap the choices that feel best. You can change these later.</p><button className={`setup-choice ${p.largeText ? 'selected' : ''}`} onClick={() => setPref('largeText', !p.largeText)}><span>🔎</span><div><b>Larger text</b><small>{p.largeText ? 'On — keep text larger' : 'Off — use standard text size'}</small></div><em>{p.largeText ? 'ON' : 'OFF'}</em></button><button className={`setup-choice ${p.highContrast ? 'selected' : ''}`} onClick={() => setPref('highContrast', !p.highContrast)}><span>◐</span><div><b>Extra-high contrast</b><small>Makes words and controls stand out more</small></div><em>{p.highContrast ? 'ON' : 'OFF'}</em></button><button className={`setup-choice ${p.voice ? 'selected' : ''}`} onClick={() => setPref('voice', !p.voice)}><span>🔊</span><div><b>Speak answers out loud</b><small>{p.assistantName || 'Bubba'} can read answers to you</small></div><em>{p.voice ? 'ON' : 'OFF'}</em></button><button className="setup-test" onClick={() => speak(`Hi ${p.userName || 'there'}. I’m ${p.assistantName || 'Bubba'}. This is how I sound.`, true)}>🔊 Hear a voice sample</button></div>}
 
-        {step === 3 && <div className="setup-content"><span className="eyebrow">REMINDERS</span><h1>Would you like helpful reminders?</h1><p className="setup-lead">Bigfoot’s Day can remind you about appointments, calls, medicine, errands, and anything else you put on your list.</p><div className="setup-permission"><span>🔔</span><div><b>Android will ask for permission.</b><p>When the phone asks, tap <strong>Allow</strong> if you want Bigfoot’s Day to show reminders.</p></div></div><button className="setup-action" onClick={() => void enableReminders()}>Turn on reminders</button>{reminderStatus === 'granted' && <div className="setup-success">✓ Reminders are turned on.</div>}{reminderStatus === 'not-granted' && <div className="setup-later">That’s okay. Reminders are not on. You can change this later.</div>}</div>}
+        {step === 3 && <div className="setup-content"><span className="eyebrow">VOICE CHECK</span><h1>Let’s make sure voice really works.</h1><p className="setup-lead">Tap the button, allow the microphone when Samsung asks, then say <strong>“Hello Bubba.”</strong> Bubba will repeat what was heard.</p><button className="setup-action voice-check" disabled={voiceTest.status === 'listening'} onClick={() => void testVoice()}>🎙 {voiceTest.status === 'listening' ? 'Listening…' : voiceTest.status === 'passed' ? 'Test voice again' : 'Test my voice'}</button>{voiceTest.status === 'passed' && <div className="setup-success">✓ Voice passed. Bubba heard: “{voiceTest.text}” and played a spoken reply.</div>}{voiceTest.status === 'failed' && <div className="setup-later"><b>Voice is not ready yet.</b><br />{voiceTest.text}<br /><br />Check that media volume is turned up, then tap <strong>Test my voice</strong> again.</div>}</div>}
 
-        {step === 4 && <div className="setup-content"><span className="eyebrow">CALLER ID</span><h1>Let Bigfoot’s Day tell you who is calling.</h1><p className="setup-lead">When a call comes in, Bigfoot’s Day can announce the person’s name when it recognizes the number.</p><div className="setup-permission"><span>☎</span><div><b>You may see two Android questions.</b><p>Choose Bigfoot’s Day for caller identification, then allow contacts so names can be recognized.</p></div></div><button className="setup-action" onClick={() => void enableCallerId()}>Turn on caller ID</button>{callerStatus === 'granted' && <div className="setup-success">✓ Caller identification is turned on.</div>}{callerStatus === 'not-granted' && <div className="setup-later">Caller ID is not on yet. No problem — you can do this later.</div>}</div>}
+        {step === 4 && <div className="setup-content"><span className="eyebrow">REMINDERS</span><h1>Would you like helpful reminders?</h1><p className="setup-lead">Bigfoot’s Day can remind you about appointments, calls, medicine, errands, and anything else you put on your list.</p><div className="setup-permission"><span>🔔</span><div><b>Android will ask for permission.</b><p>When the phone asks, tap <strong>Allow</strong> if you want Bigfoot’s Day to show reminders.</p></div></div><button className="setup-action" onClick={() => void enableReminders()}>Turn on reminders</button>{reminderStatus === 'granted' && <div className="setup-success">✓ Reminders are turned on.</div>}{reminderStatus === 'not-granted' && <div className="setup-later">That’s okay. Reminders are not on. You can change this later.</div>}</div>}
 
-        {step === 5 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Scout to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Scout'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Bigfoot’s Day will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to Bigfoot’s Day.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up Bigfoot’s Day and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Scout can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Scout for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>We’ve kept this simple.</b><p>You will not need to enter technical settings or connection codes.</p></div></div><div className="setup-success">✓ Your assistant is ready.</div></div>)}
+        {step === 5 && <div className="setup-content"><span className="eyebrow">CALLER ID</span><h1>Let Bigfoot’s Day tell you who is calling.</h1><p className="setup-lead">When a call comes in, Bigfoot’s Day can announce the person’s name when it recognizes the number.</p><div className="setup-permission"><span>☎</span><div><b>You may see two Android questions.</b><p>Choose Bigfoot’s Day for caller identification, then allow contacts so names can be recognized.</p></div></div><button className="setup-action" onClick={() => void enableCallerId()}>Turn on caller ID</button>{callerStatus === 'granted' && <div className="setup-success">✓ Caller identification is turned on.</div>}{callerStatus === 'not-granted' && <div className="setup-later">Caller ID is not on yet. No problem — you can do this later.</div>}</div>}
 
-        {step === 6 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">ALL DONE</span><h1>You’re ready to use Bigfoot’s Day.</h1><p className="setup-lead">Start simple. Tap the microphone and talk to {p.assistantName || 'Scout'} just like you would talk to a person.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🔊</span><b>{p.voice ? 'Voice on' : 'Voice off'}</b><small>Spoken answers</small></div><div><span>🔔</span><b>{reminderStatus === 'granted' ? 'Reminders on' : 'Can do later'}</b><small>Notifications</small></div><div><span>⌂</span><b>Home screen icon</b><small>We’ll ask Samsung to add it next</small></div></div><p className="setup-tip">You can run this guided setup again any time from Settings.</p></div>}
+        {step === 6 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Bubba to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Bubba'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Bigfoot’s Day will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to Bigfoot’s Day.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up Bigfoot’s Day and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Bubba can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Bubba for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>We’ve kept this simple.</b><p>You will not need to enter technical settings or connection codes.</p></div></div><div className="setup-success">✓ Your assistant is ready.</div></div>)}
+
+        {step === 7 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then the next ability appears.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your list</b><small>Add tasks and hear what to do next.</small></div><div><b>3. Notes, reminders & people</b><small>Save information and get helpful alerts.</small></div><div><b>4. More Help</b><small>Open ChatGPT for detailed questions.</small></div></div></div>}
+
+        {step === 8 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Bigfoot’s Day will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>Microphone and speaker</small></div><div><span>🔔</span><b>{reminderStatus === 'granted' ? 'Reminders on' : 'Can do later'}</b><small>Notifications</small></div><div><span>⌂</span><b>Home screen icon</b><small>Samsung will be asked to add it next</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
 
         <button className="setup-read" onClick={() => speak(readCopy[step], true)}>🔊 Read this screen to me</button>
       </section>
-      <div className="setup-nav">{step > 0 ? <button className="setup-back" onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button> : <span />}{step < 6 ? <button className="setup-next" onClick={() => setStep(s => Math.min(6, s + 1))}>{step >= 3 && ((step === 3 && reminderStatus !== 'granted') || (step === 4 && callerStatus !== 'granted') || (step === 5 && p.apiBase.trim() && googleStatus !== 'connected')) ? 'Do this later →' : 'Continue →'}</button> : <button className="setup-next finish" onClick={onFinish}>Start using Bigfoot’s Day</button>}</div>
+      <div className="setup-nav">{step > 0 ? <button className="setup-back" onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button> : <span />}{step < 8 ? <button className="setup-next" onClick={() => setStep(s => Math.min(8, s + 1))}>{step === 3 && voiceTest.status !== 'passed' ? 'Test later →' : step >= 4 && ((step === 4 && reminderStatus !== 'granted') || (step === 5 && callerStatus !== 'granted') || (step === 6 && p.apiBase.trim() && googleStatus !== 'connected')) ? 'Do this later →' : 'Continue →'}</button> : <button className="setup-next finish" onClick={onFinish}>Begin my first lesson</button>}</div>
       <p className="setup-footer">Take your time. Nothing here has to be perfect.</p>
     </main>
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<void>; openChatGPT: () => Promise<void>; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<void>; openChatGPT: () => Promise<void>; advanceLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
+  const lesson = [
+    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap below, say “What can you do?”, then listen to Bubba’s answer.', action: '🎙 Practice talking', run: async () => { await talk(); advanceLearning() } },
+    { title: 'Lesson 2: Use your list', copy: 'See how Bubba adds something to your list for you.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); advanceLearning() } },
+    { title: 'Lesson 3: Save a note', copy: 'Bubba can remember a short note so you do not have to.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); advanceLearning() } },
+    { title: 'Lesson 4: Get detailed help', copy: 'For detailed questions, Bigfoot’s Day opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
+  ][Math.min(3, state.preferences.learningStep)]
   return <div className="page home-page">
-    <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">SCOUT // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> SCOUT IS READY</div></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a live conversation with Scout"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>SCOUT</b><small>TAP TO TALK</small></span></button></section>
+    <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
+    {state.preferences.learningStep < 4 ? <section className="panel learning-card"><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 4</small></div><button onClick={() => void lesson.run()}>{lesson.action}</button></section> : <section className="panel learning-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
@@ -248,11 +286,11 @@ function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleL
   useEffect(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), [state.chat, thinking])
   function submit(e: FormEvent) { e.preventDefault(); if (input.trim()) { ask(input); setInput('') } }
   const localMode = !state.preferences.apiBase.trim()
-  return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Scout'}</h1><p>Ask naturally about your list, notes, people and day.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : localMode ? 'Talk to Scout' : 'Start live conversation'}</button></div>
+  return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Bubba'}</h1><p>Ask naturally about your list, notes, people and day.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : localMode ? 'Talk to Bubba' : 'Start live conversation'}</button></div>
     {localMode && <section className="panel chatgpt-bridge"><div><span className="eyebrow">MORE HELP</span><h2>Need a more detailed answer?</h2><p>Tap the button and continue speaking.</p></div><button onClick={() => void openChatGPT()}>✦ Continue</button></section>}
-    <div className="chat panel">{state.chat.slice(-20).map((m, i) => <div key={i} className={`bubble ${m.role}`}><small>{m.role === 'assistant' ? state.preferences.assistantName : 'You'}</small>{m.text}</div>)}{thinking && <div className="bubble assistant thinking">Scout is thinking <i>•••</i></div>}<div ref={bottom} /></div>
-    <div className="suggestions"><button onClick={() => ask('Manage my day using my open list and notes. Tell me what to do first.')}>Manage my day</button><button onClick={() => ask('Add call the doctor to my list')}>Add to my list</button><button onClick={() => ask('What can you help me with?')}>What can Scout do?</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
-    <form className="ask-box" onSubmit={submit}><button type="button" className={listening ? 'listening' : ''} onClick={listen}>🎙</button><input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask Scout anything…" aria-label="Ask Scout" /><button className="send">Send</button></form>
+    <div className="chat panel">{state.chat.slice(-20).map((m, i) => <div key={i} className={`bubble ${m.role}`}><small>{m.role === 'assistant' ? state.preferences.assistantName : 'You'}</small>{m.text}</div>)}{thinking && <div className="bubble assistant thinking">Bubba is thinking <i>•••</i></div>}<div ref={bottom} /></div>
+    <div className="suggestions"><button onClick={() => ask('Manage my day using my open list and notes. Tell me what to do first.')}>Manage my day</button><button onClick={() => ask('Add call the doctor to my list')}>Add to my list</button><button onClick={() => ask('What can you help me with?')}>What can Bubba do?</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
+    <form className="ask-box" onSubmit={submit}><button type="button" className={listening ? 'listening' : ''} onClick={listen}>🎙</button><input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask Bubba anything…" aria-label="Ask Bubba" /><button className="send">Send</button></form>
   </div>
 }
 
@@ -267,7 +305,7 @@ function Email({ state, notify }: { state: AppState; notify: (s: string) => void
   const headers = { 'Content-Type': 'application/json', 'X-Bigfoot-Token': state.preferences.companionToken }
 
   async function suggest(message: EmailMessage) {
-    setDrafts(d => ({ ...d, [message.id]: 'Scout is writing a suggestion…' }))
+    setDrafts(d => ({ ...d, [message.id]: 'Bubba is writing a suggestion…' }))
     try {
       const r = await fetch(`${base}/api/mail/suggest-reply`, { method: 'POST', headers, body: JSON.stringify({ email: message, userName: state.preferences.userName }) })
       if (!r.ok) throw new Error()
@@ -292,7 +330,7 @@ function Email({ state, notify }: { state: AppState; notify: (s: string) => void
 
   async function sendReply(message: EmailMessage) {
     const draft = drafts[message.id]?.trim() || ''
-    if (!draft || draft.startsWith('Scout is ') || draft.startsWith('Could not ') || draft === 'No reply appears necessary.') return
+    if (!draft || draft.startsWith('Bubba is ') || draft.startsWith('Could not ') || draft === 'No reply appears necessary.') return
     if (!window.confirm(`Send this reply to ${message.from}?\n\nNothing will be sent unless you choose OK.`)) return
     setSending(message.id)
     try {
@@ -303,19 +341,19 @@ function Email({ state, notify }: { state: AppState; notify: (s: string) => void
     finally { setSending('') }
   }
 
-  return <div className="page email-page"><div className="page-title split"><div><span className="eyebrow">SIMPLE INBOX</span><h1>Important Email</h1><p>Scout reads the newest useful messages and suggests a reply for you.</p></div><button className="email-refresh" onClick={() => void load()}>↻ Refresh email</button></div>
-    <div className="email-safety">🔒 <b>You stay in control.</b> Scout can write a suggested reply, but it will never send one until you approve it.</div>
+  return <div className="page email-page"><div className="page-title split"><div><span className="eyebrow">SIMPLE INBOX</span><h1>Important Email</h1><p>Bubba reads the newest useful messages and suggests a reply for you.</p></div><button className="email-refresh" onClick={() => void load()}>↻ Refresh email</button></div>
+    <div className="email-safety">🔒 <b>You stay in control.</b> Bubba can write a suggested reply, but it will never send one until you approve it.</div>
     {loading && <section className="panel email-state">Checking your newest email…</section>}
     {error && <section className="panel email-state email-error"><b>Gmail needs attention.</b><span>{error}</span></section>}
     {!loading && !error && messages.length === 0 && <section className="panel email-state">No recent inbox messages need your attention.</section>}
     <div className="email-list">{messages.map(message => {
-      const draft = drafts[message.id] || 'Scout is writing a suggestion…'
-      const editable = !draft.startsWith('Scout is ') && !draft.startsWith('Could not ') && draft !== 'No reply appears necessary.'
+      const draft = drafts[message.id] || 'Bubba is writing a suggestion…'
+      const editable = !draft.startsWith('Bubba is ') && !draft.startsWith('Could not ') && draft !== 'No reply appears necessary.'
       return <article className={`panel email-card ${message.unread ? 'unread' : ''}`} key={message.id}>
         <div className="email-meta"><div><span className="eyebrow">{message.unread ? 'NEW MESSAGE' : 'RECENT MESSAGE'}</span><h2>{message.subject}</h2><b>{message.from}</b></div><small>{formatEmailDate(message.date)}</small></div>
         <p className="email-preview">{message.snippet || 'Open this message in Gmail to read the full content.'}</p>
         <button className="read-email" onClick={() => speak(`Email from ${message.from}. Subject: ${message.subject}. ${message.snippet}`, true)}>🔊 Read this email to me</button>
-        <div className="reply-box"><div className="reply-title"><span>✦</span><div><b>Scout’s suggested reply</b><small>You can change any words before sending.</small></div></div>
+        <div className="reply-box"><div className="reply-title"><span>✦</span><div><b>Bubba’s suggested reply</b><small>You can change any words before sending.</small></div></div>
           {editable ? <textarea value={draft} onChange={e => setDrafts(d => ({ ...d, [message.id]: e.target.value }))} aria-label={`Suggested reply to ${message.from}`} /> : <p className="draft-status">{draft}</p>}
           <div className="reply-actions"><button onClick={() => speak(draft, true)} disabled={!editable}>🔊 Read reply</button>{draft.startsWith('Could not ') && <button onClick={() => void suggest(message)}>Try suggestion again</button>}<button className="send-reply" onClick={() => void sendReply(message)} disabled={!editable || sending === message.id || sent[message.id]}>{sent[message.id] ? '✓ Sent' : sending === message.id ? 'Sending…' : 'Approve & send reply'}</button></div>
         </div>
@@ -348,7 +386,7 @@ function Notes({ notes, onChange }: { notes: AppState['notes']; onChange: (n: Ap
   const [text, setText] = useState('')
   const visible = notes.filter(n => !n.deleted)
   function add(e: FormEvent) { e.preventDefault(); if (!text.trim()) return; const now = new Date().toISOString(); onChange([{ id: uid(), text: text.trim(), createdAt: now, updatedAt: now }, ...notes]); setText('') }
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">DON’T LOSE THE THOUGHT</span><h1>Notes</h1><p>Quick notes Scout can use when helping you.</p></div></div><form className="note-form panel" onSubmit={add}><textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write a note…" /><button>Save note</button></form><div className="notes-grid">{visible.map(n => <article className="note panel" key={n.id}><p>{n.text}</p><small>{new Date(n.createdAt).toLocaleString()}</small><button className="delete" onClick={() => onChange(notes.map(x => x.id === n.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x))}>Remove</button></article>)}</div></div>
+  return <div className="page"><div className="page-title"><div><span className="eyebrow">DON’T LOSE THE THOUGHT</span><h1>Notes</h1><p>Quick notes Bubba can use when helping you.</p></div></div><form className="note-form panel" onSubmit={add}><textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write a note…" /><button>Save note</button></form><div className="notes-grid">{visible.map(n => <article className="note panel" key={n.id}><p>{n.text}</p><small>{new Date(n.createdAt).toLocaleString()}</small><button className="delete" onClick={() => onChange(notes.map(x => x.id === n.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x))}>Remove</button></article>)}</div></div>
 }
 
 function Settings({ state, onChange, notify, onRunSetup, onReset }: { state: AppState; onChange: (s: AppState) => void; notify: (s: string) => void; onRunSetup: () => void; onReset: () => void }) {
@@ -373,7 +411,7 @@ function Settings({ state, onChange, notify, onRunSetup, onReset }: { state: App
   }
   return <div className="page settings"><div className="page-title"><div><span className="eyebrow">MAKE IT YOURS</span><h1>Settings</h1><p>Big controls. Plain language. Nothing hidden.</p></div></div>
     <section className="panel setup-again"><div><h2>Need help setting things up?</h2><p>We can walk through setup together again, one step at a time. Your saved information will stay here.</p></div><button onClick={onRunSetup}>Run Easy Setup Again</button></section>
-    <section className="panel settings-group"><h2>You & Scout</h2><label>Your first name<input value={p.userName} onChange={e => set('userName', e.target.value)} /></label><label>Assistant name<input value={p.assistantName} onChange={e => set('assistantName', e.target.value)} /></label></section>
+    <section className="panel settings-group"><h2>You & Bubba</h2><label>Your first name<input value={p.userName} onChange={e => set('userName', e.target.value)} /></label><label>Assistant name<input value={p.assistantName} onChange={e => set('assistantName', e.target.value)} /></label></section>
     <section className="panel settings-group"><h2>Easy to see & hear</h2><Toggle label="Speak answers out loud" value={p.voice} set={v => set('voice', v)} /><Toggle label="Use larger text" value={p.largeText} set={v => set('largeText', v)} /><Toggle label="Extra-high contrast" value={p.highContrast} set={v => set('highContrast', v)} /></section>
     {p.apiBase.trim() && <GoogleConnection apiBase={p.apiBase} companionToken={p.companionToken} notify={notify} />}
     <details className="panel settings-group advanced-settings"><summary>Settings for a helper</summary><p className="hint">Most people never need to open this section.</p><label>Assistant service address<input value={p.apiBase} onChange={e => set('apiBase', e.target.value)} placeholder="Service address" /></label><label>Private connection code<input type="password" value={p.companionToken} onChange={e => set('companionToken', e.target.value)} placeholder="Private code" autoComplete="off" /></label><Toggle label="Keep devices automatically in sync" value={p.autoSync} set={v => set('autoSync', v)} /><div className="sync-actions"><button onClick={() => void sync('save')}>Save to companion</button><button onClick={() => void sync('load')}>Load from companion</button></div></details>
@@ -402,7 +440,7 @@ function GoogleConnection({ apiBase, companionToken, notify }: { apiBase: string
       const timer = window.setInterval(async () => { tries++; await check(); if (tries >= 20) clearInterval(timer) }, 3000)
     } catch { notify('Google connection is not configured on the companion service yet.') }
   }
-  return <section className="panel settings-group google-connect"><h2>Gmail & Google Calendar</h2><p className="hint">Connect once so Scout can brief you on email and your calendar. Bigfoot’s Day never asks for your Google password.</p><div className={`connection-row ${connected ? '' : 'offline'}`}><span className="status-dot" /> {checking ? 'Checking Google…' : connected ? `Connected${email ? ` as ${email}` : ''}` : 'Not connected'}</div><div className="sync-actions">{!connected && <button onClick={() => void connect()}>Connect Google</button>}<button onClick={() => void check()}>Check connection</button></div></section>
+  return <section className="panel settings-group google-connect"><h2>Gmail & Google Calendar</h2><p className="hint">Connect once so Bubba can brief you on email and your calendar. Bigfoot’s Day never asks for your Google password.</p><div className={`connection-row ${connected ? '' : 'offline'}`}><span className="status-dot" /> {checking ? 'Checking Google…' : connected ? `Connected${email ? ` as ${email}` : ''}` : 'Not connected'}</div><div className="sync-actions">{!connected && <button onClick={() => void connect()}>Connect Google</button>}<button onClick={() => void check()}>Check connection</button></div></section>
 }
 
 function Toggle({ label, value, set }: { label: string; value: boolean; set: (v: boolean) => void }) { return <label className="toggle-row"><span>{label}</span><button className={`switch ${value ? 'on' : ''}`} onClick={() => set(!value)} aria-pressed={value}><i /></button></label> }
