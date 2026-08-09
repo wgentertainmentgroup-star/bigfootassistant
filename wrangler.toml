@@ -1,0 +1,18 @@
+name = "bigfoots-day-private"
+main = "cloudflare/worker.mjs"
+compatibility_date = "2026-08-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "VAULT"
+class_name = "BigfootVault"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BigfootVault"]
+
+# Set these with Cloudflare secrets/environment settings; never commit their values:
+# OPENAI_API_KEY
+# BIGFOOT_APP_TOKEN
+# GOOGLE_CLIENT_ID
+# GOOGLE_CLIENT_SECRET
