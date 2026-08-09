@@ -1,14 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { defaultState, loadState, saveState } from './storage'
-import { addVoiceStateListener, getLastCaller, isAndroid, openCamera, openChatGPT, openDeviceSettings, openMapSearch, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
+import { addVoiceStateListener, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v090'
-const appVersion = 'v0.9 EASY SETUP'
+const setupMarker = 'bigfoots-day-easy-setup-v0100'
+const appVersion = 'v0.10 E2E GATED'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -22,7 +23,9 @@ function placeConfirmedCall(name: string, phone: string) {
 }
 
 async function captureVoiceOnce(): Promise<{ text: string; error: string }> {
-  if (isAndroid()) return requestVoiceInput()
+  // Android must never use WebView SpeechRecognition. On some Samsung phones that
+  // fallback opens an external blank speech surface instead of staying in the app.
+  if (isAndroidDevice()) return requestVoiceInput()
   return new Promise(resolve => {
     let finished = false
     const done = (result: { text: string; error: string }) => {
@@ -150,11 +153,11 @@ function App() {
       realtimeRef.current.stop(); realtimeRef.current = null; setLiveVoice(false); notify('Live conversation ended.'); return true
     }
     if (!state.preferences.apiBase.trim()) {
-      setSection('assistant')
+      flushSync(() => setSection('assistant'))
       return startListening()
     }
     try {
-      setSection('assistant')
+      flushSync(() => setSection('assistant'))
       notify('Starting live Bubba…')
       realtimeRef.current = await startRealtimeVoice({
         apiBase: state.preferences.apiBase,
@@ -173,7 +176,7 @@ function App() {
   }
 
   const rootClass = `${state.preferences.largeText ? 'large-text' : ''} ${state.preferences.highContrast ? 'high-contrast' : ''}`
-  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut(); setShowSetup(false); setSection('home') }} />
+  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); setShowSetup(false); setSection('home') }} />
   return <div className={`app ${rootClass}`}>
     <header className="topbar">
       <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
@@ -198,7 +201,7 @@ function App() {
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
         {section === 'people' && <People people={state.people} onChange={people => patch({ people })} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
         {section === 'notes' && <Notes notes={state.notes} onChange={notes => patch({ notes })} />}
-        {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onReset={() => { setState(defaultState); setShowSetup(true); notify('Bigfoot’s Day was reset.') }} />}
+        {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onAddHomeShortcut={async () => notify(await requestHomeShortcut() ? 'Samsung opened the Add to Home screen request.' : 'Open Apps, press and hold Bigfoot, then tap Add to Home.')} onReset={() => { setState(defaultState); setShowSetup(true); notify('Bigfoot’s Day was reset.') }} />}
       </main>
     </div>
 
@@ -273,7 +276,7 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
   }
 
   return <div className={`setup-shell ${rootClass}`}>
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.9</span></header>
+    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.10</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -297,7 +300,7 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
 
         {step === 9 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then try the everyday tools on Today.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your day</b><small>Use lists, notes, shopping items and reminders.</small></div><div><b>3. Use phone tools</b><small>Set timers and alarms, open maps and the camera.</small></div><div><b>4. People & caller ID</b><small>Keep important people easy to reach.</small></div><div><b>5. More Help</b><small>Open ChatGPT for detailed questions.</small></div></div></div>}
 
-        {step === 10 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Bigfoot’s Day will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>{p.slowVoice ? 'Slower' : 'Normal'} speaking pace</small></div><div><span>☎</span><b>{p.trustedHelperName && p.trustedHelperPhone ? p.trustedHelperName : 'Can add later'}</b><small>Trusted helper</small></div><div><span>⌂</span><b>Home screen icon</b><small>Samsung will be asked to add it next</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
+        {step === 10 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Bigfoot’s Day will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>{p.slowVoice ? 'Slower' : 'Normal'} speaking pace</small></div><div><span>☎</span><b>{p.trustedHelperName && p.trustedHelperPhone ? p.trustedHelperName : 'Can add later'}</b><small>Trusted helper</small></div><div><span>⌂</span><b>App icon is installed</b><small>Add it to Home later from Settings</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
 
         <button className="setup-read" onClick={() => speak(readCopy[step], true, p.slowVoice)}>🔊 Read this screen to me</button>
       </section>
@@ -446,7 +449,7 @@ function Notes({ notes, onChange }: { notes: AppState['notes']; onChange: (n: Ap
   return <div className="page"><div className="page-title"><div><span className="eyebrow">DON’T LOSE THE THOUGHT</span><h1>Notes</h1><p>Quick notes Bubba can use when helping you.</p></div></div><form className="note-form panel" onSubmit={add}><textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write a note…" /><button>Save note</button></form><div className="notes-grid">{visible.map(n => <article className="note panel" key={n.id}><p>{n.text}</p><small>{new Date(n.createdAt).toLocaleString()}</small><button className="delete" onClick={() => onChange(notes.map(x => x.id === n.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x))}>Remove</button></article>)}</div></div>
 }
 
-function Settings({ state, onChange, notify, onRunSetup, onReset }: { state: AppState; onChange: (s: AppState) => void; notify: (s: string) => void; onRunSetup: () => void; onReset: () => void }) {
+function Settings({ state, onChange, notify, onRunSetup, onAddHomeShortcut, onReset }: { state: AppState; onChange: (s: AppState) => void; notify: (s: string) => void; onRunSetup: () => void; onAddHomeShortcut: () => void; onReset: () => void }) {
   const p = state.preferences; const set = (key: keyof typeof p, value: string | boolean) => onChange({ ...state, preferences: { ...p, [key]: value } })
   const companionBase = () => p.apiBase.trim().replace(/\/$/, '') || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '')
   async function sync(mode: 'save' | 'load') {
@@ -468,6 +471,7 @@ function Settings({ state, onChange, notify, onRunSetup, onReset }: { state: App
   }
   return <div className="page settings"><div className="page-title"><div><span className="eyebrow">MAKE IT YOURS</span><h1>Settings</h1><p>Big controls. Plain language. Nothing hidden.</p></div></div>
     <section className="panel setup-again"><div><h2>Need help setting things up?</h2><p>We can walk through setup together again, one step at a time. Your saved information will stay here.</p></div><button onClick={onRunSetup}>Run Easy Setup Again</button></section>
+    <section className="panel setup-again"><div><h2>Put Bigfoot on the Home screen</h2><p>This is optional and no longer interrupts setup. Samsung may show an Add to Home confirmation.</p></div><button onClick={onAddHomeShortcut}>Add Icon to Home</button></section>
     <section className="panel settings-group"><h2>You & Bubba</h2><label>Your first name<input value={p.userName} onChange={e => set('userName', e.target.value)} /></label><label>Assistant name<input value={p.assistantName} onChange={e => set('assistantName', e.target.value)} /></label></section>
     <section className="panel settings-group"><h2>Easy to see & hear</h2><Toggle label="Speak answers out loud" value={p.voice} set={v => set('voice', v)} /><Toggle label="Use slower speech" value={p.slowVoice} set={v => set('slowVoice', v)} /><Toggle label="Use larger text" value={p.largeText} set={v => set('largeText', v)} /><Toggle label="Extra-high contrast" value={p.highContrast} set={v => set('highContrast', v)} /><button className="settings-voice-sample" onClick={() => void speak(`Hi ${p.userName || 'there'}. This is Bubba using your chosen speaking pace.`, true, p.slowVoice)}>🔊 Hear Bubba’s voice</button></section>
     <section className="panel settings-group"><h2>Trusted helper</h2><p className="hint">Optional. This person appears on a large button on Today. Every call requires confirmation.</p><label>Helper’s name<input value={p.trustedHelperName} onChange={e => set('trustedHelperName', e.target.value)} placeholder="Name" /></label><label>Helper’s phone number<input type="tel" inputMode="tel" value={p.trustedHelperPhone} onChange={e => set('trustedHelperPhone', e.target.value)} placeholder="Phone number" /></label></section>
