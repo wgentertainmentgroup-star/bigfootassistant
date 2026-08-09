@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.8 release gate: web tests, Android emulator lifecycle test, then APK packaging.
+# v0.9 release gate: web tests, Android emulator lifecycle test, then APK packaging.
 
 on:
   push:
@@ -104,14 +104,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.8-Safe-Voice.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.9-Easy-Setup.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.8-safe-voice \
-            Bigfoots-Day-v0.8-Safe-Voice.apk \
+          gh release create v0.9-easy-setup \
+            Bigfoots-Day-v0.9-Easy-Setup.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.8 — Safe Voice Build" \
-            --notes "Release-gated Samsung Z Fold5 APK. Voice input uses Android's in-app recognizer and prefers on-device recognition, with an emulator regression proving MainActivity remains visible and resumed. Adds large one-tap daily briefing, timer, alarm, shopping, Maps, camera, saved-contact calling, caller ID, notes, reminders, and ChatGPT handoff features. Includes the nine-step senior-friendly setup and a clearly labeled v0.8 home-screen icon."
+            --title "Bigfoot's Day v0.9 — Easy Setup Build" \
+            --notes "Release-gated Samsung Z Fold5 APK. Keeps the repaired in-app voice recognizer and emulator lifecycle gate, and adds an eleven-step senior-friendly setup, normal or slower Bubba speech, a confirmed trusted-helper call button, simplified home guidance, reminders, caller ID, lists, notes, phone tools, and ChatGPT handoff."
