@@ -7,19 +7,22 @@ import static org.junit.Assert.assertTrue;
 import android.Manifest;
 import androidx.lifecycle.Lifecycle;
 import androidx.test.core.app.ActivityScenario;
-import androidx.test.ext.junit.rules.GrantPermissionRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.Rule;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class MainActivityRegressionTest {
-    @Rule
-    public GrantPermissionRule microphonePermission = GrantPermissionRule.grant(Manifest.permission.RECORD_AUDIO);
+    @Before
+    public void grantMicrophonePermission() {
+        String packageName = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageName();
+        InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(packageName, Manifest.permission.RECORD_AUDIO);
+    }
 
     @Test
     public void appLaunchesAndRendersTheVersionedInterface() throws Exception {
