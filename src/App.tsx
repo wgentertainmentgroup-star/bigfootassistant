@@ -1,13 +1,14 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultState, loadState, saveState } from './storage'
-import { addVoiceStateListener, getLastCaller, isAndroid, openChatGPT, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, syncPeopleForCallerId, type NativeVoiceState } from './native'
+import { addVoiceStateListener, getLastCaller, isAndroid, openCamera, openChatGPT, openDeviceSettings, openMapSearch, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v071'
+const setupMarker = 'bigfoots-day-easy-setup-v080'
+const appVersion = 'v0.8 SAFE VOICE'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -108,8 +109,21 @@ function App() {
     } catch {
       const result = localAssistant(text, stateRef.current)
       setState(s => ({ ...s, ...result.changes, chat: [...s.chat, { role: 'assistant', text: result.reply }] }))
-      speak(result.reply, state.preferences.voice)
+      await speak(result.reply, state.preferences.voice)
+      if (result.action) await runAssistantAction(result.action)
     } finally { setThinking(false) }
+  }
+
+  async function runAssistantAction(action: AssistantAction) {
+    let opened = true
+    if (action.type === 'timer') opened = await setDeviceTimer(action.seconds, action.label)
+    if (action.type === 'alarm') opened = await setDeviceAlarm(action.hour, action.minute, action.label)
+    if (action.type === 'map') opened = await openMapSearch(action.query)
+    if (action.type === 'camera') opened = await openCamera()
+    if (action.type === 'settings') opened = await openDeviceSettings()
+    if (action.type === 'chatgpt') await launchChatGPT()
+    if (action.type === 'call') location.href = `tel:${action.phone}`
+    if (!opened) notify('The phone could not open that tool. Please try it from the phone’s Apps screen.')
   }
 
   async function startListening() {
@@ -155,6 +169,7 @@ function App() {
       <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
         <span className="paw">🐾</span><span><b>Bigfoot’s Day</b><small>Your day. Made simple.</small></span>
       </button>
+      <div className="version-badge">{appVersion}</div>
       <div className="date-chip"><span className="status-dot" /> {localDate()}</div>
     </header>
 
@@ -245,7 +260,7 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
   }
 
   return <div className={`setup-shell ${rootClass}`}>
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup</span></header>
+    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.8</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 9`}><div className="setup-progress-copy"><b>Step {step + 1} of 9</b><span>{['Welcome', 'About you', 'See & hear', 'Voice test', 'Reminders', 'Caller ID', 'Connections', 'Learning', 'Ready'][step]}</span></div><div className="setup-progress-track"><i style={{ width: `${((step + 1) / 9) * 100}%` }} /></div></div>
       <section className="setup-card">
@@ -263,7 +278,7 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
 
         {step === 6 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Bubba to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Bubba'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Bigfoot’s Day will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to Bigfoot’s Day.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up Bigfoot’s Day and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Bubba can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Bubba for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>We’ve kept this simple.</b><p>You will not need to enter technical settings or connection codes.</p></div></div><div className="setup-success">✓ Your assistant is ready.</div></div>)}
 
-        {step === 7 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then the next ability appears.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your list</b><small>Add tasks and hear what to do next.</small></div><div><b>3. Notes, reminders & people</b><small>Save information and get helpful alerts.</small></div><div><b>4. More Help</b><small>Open ChatGPT for detailed questions.</small></div></div></div>}
+        {step === 7 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then try the everyday tools on Today.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your day</b><small>Use lists, notes, shopping items and reminders.</small></div><div><b>3. Use phone tools</b><small>Set timers and alarms, open maps and the camera.</small></div><div><b>4. People & caller ID</b><small>Keep important people easy to reach.</small></div><div><b>5. More Help</b><small>Open ChatGPT for detailed questions.</small></div></div></div>}
 
         {step === 8 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Bigfoot’s Day will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>Microphone and speaker</small></div><div><span>🔔</span><b>{reminderStatus === 'granted' ? 'Reminders on' : 'Can do later'}</b><small>Notifications</small></div><div><span>⌂</span><b>Home screen icon</b><small>Samsung will be asked to add it next</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
 
@@ -290,8 +305,12 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, advan
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
-      <button className="quick chatgpt-quick" onClick={() => void openChatGPT()}><span>✦</span><b>More Help</b><small>Get help with a detailed question.</small></button>
+      <button className="quick" onClick={() => ask('Set a timer for 10 minutes')}><span>◷</span><b>10-minute timer</b><small>Open Samsung Clock and start a timer.</small></button>
+      <button className="quick" onClick={() => ask('What is on my shopping list?')}><span>🛒</span><b>Shopping list</b><small>Add an item by telling Bubba.</small></button>
+      <button className="quick" onClick={() => ask('Open maps')}><span>⌖</span><b>Maps</b><small>Find a place or get directions.</small></button>
+      <button className="quick" onClick={() => ask('Open camera')}><span>▣</span><b>Camera</b><small>Open the phone camera.</small></button>
       <button className="quick" onClick={() => go('people')}><span>☎</span><b>Call someone</b><small>{lastCaller || `${state.people.filter(p => !p.deleted).length} people saved`}</small></button>
+      <button className="quick chatgpt-quick" onClick={() => void openChatGPT()}><span>✦</span><b>More Help</b><small>Get help with a detailed question.</small></button>
     </div>
     <section className="panel today-panel"><div className="panel-head"><div><span className="eyebrow">TODAY</span><h2>Your short list</h2></div><button className="text-button" onClick={() => go('tasks')}>See all →</button></div>
       {todayTasks.length === 0 ? <div className="empty">✓ Nothing urgent. You’re caught up.</div> : todayTasks.slice(0, 4).map(t => <label className="task-row" key={t.id}><input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} /><span><b>{t.text}</b><small>{t.due ? 'Due today or earlier' : 'No date'}</small></span>{t.important && <em>Important</em>}</label>)}
@@ -309,7 +328,7 @@ function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleL
   return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Bubba'}</h1><p>Ask naturally about your list, notes, people and day.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : localMode ? 'Talk to Bubba' : 'Start live conversation'}</button></div>
     {localMode && <section className="panel chatgpt-bridge"><div><span className="eyebrow">MORE HELP</span><h2>Need a more detailed answer?</h2><p>Tap the button and continue speaking.</p></div><button onClick={() => void openChatGPT()}>✦ Continue</button></section>}
     <div className="chat panel">{state.chat.slice(-20).map((m, i) => <div key={i} className={`bubble ${m.role}`}><small>{m.role === 'assistant' ? state.preferences.assistantName : 'You'}</small>{m.text}</div>)}{thinking && <div className="bubble assistant thinking">Bubba is thinking <i>•••</i></div>}<div ref={bottom} /></div>
-    <div className="suggestions"><button onClick={() => ask('Manage my day using my open list and notes. Tell me what to do first.')}>Manage my day</button><button onClick={() => ask('Add call the doctor to my list')}>Add to my list</button><button onClick={() => ask('What can you help me with?')}>What can Bubba do?</button><button onClick={() => ask('What is still on my list?')}>What’s still on my list?</button></div>
+    <div className="suggestions"><button onClick={() => ask('Manage my day using my open list and notes. Tell me what to do first.')}>Manage my day</button><button onClick={() => ask('Set a timer for 10 minutes')}>Set a timer</button><button onClick={() => ask('Add milk to my shopping list')}>Add shopping item</button><button onClick={() => ask('Add call the doctor to my list')}>Add to my list</button><button onClick={() => ask('What can you help me with?')}>What can Bubba do?</button></div>
     <form className="ask-box" onSubmit={submit}><button type="button" className={listening ? 'listening' : ''} onClick={listen}>🎙</button><input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask Bubba anything…" aria-label="Ask Bubba" /><button className="send">Send</button></form>
   </div>
 }
@@ -469,7 +488,16 @@ function normalizePhone(v: string) { return v.replace(/\D/g, '').slice(-10) }
 function getCompanionBase(value: string) { return value.trim().replace(/\/$/, '') || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '') }
 function formatEmailDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }
 
-type LocalAssistantResult = { reply: string; changes?: Partial<AppState> }
+export type AssistantAction =
+  | { type: 'timer'; seconds: number; label: string }
+  | { type: 'alarm'; hour: number; minute: number; label: string }
+  | { type: 'map'; query: string }
+  | { type: 'camera' }
+  | { type: 'settings' }
+  | { type: 'chatgpt' }
+  | { type: 'call'; phone: string }
+
+type LocalAssistantResult = { reply: string; changes?: Partial<AppState>; action?: AssistantAction }
 
 export function localAssistant(text: string, state: AppState): LocalAssistantResult {
   const q = text.toLowerCase().trim()
@@ -477,6 +505,54 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
   const stamp = now.toISOString()
   const today = stamp.slice(0, 10)
   const open = state.tasks.filter(t => !t.deleted && !t.done)
+
+  const timerMatch = text.match(/\bset\s+(?:a\s+)?timer(?:\s+for)?\s+(\d+)\s*(second|minute|hour)s?\b/i)
+  if (timerMatch) {
+    const amount = Number(timerMatch[1])
+    const multiplier = timerMatch[2].toLowerCase() === 'hour' ? 3600 : timerMatch[2].toLowerCase() === 'minute' ? 60 : 1
+    const seconds = Math.min(86399, Math.max(1, amount * multiplier))
+    return { reply: `I’m opening Samsung Clock with a ${amount} ${timerMatch[2]} timer. Tap Start if the phone asks.`, action: { type: 'timer', seconds, label: "Bubba's timer" } }
+  }
+
+  const alarmMatch = text.match(/\bset\s+(?:an\s+)?alarm(?:\s+(?:for|at))?\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i)
+  if (alarmMatch) {
+    let hour = Number(alarmMatch[1]) % 12
+    const minute = Number(alarmMatch[2] || 0)
+    const evening = alarmMatch[3].toLowerCase().startsWith('p')
+    if (evening) hour += 12
+    if (minute > 59) return { reply: 'That alarm time is not valid. Try saying, set an alarm for 7:30 AM.' }
+    const spokenTime = `${Number(alarmMatch[1])}:${String(minute).padStart(2, '0')} ${evening ? 'PM' : 'AM'}`
+    return { reply: `I’m opening Samsung Clock with an alarm for ${spokenTime}. Check it, then tap Save.`, action: { type: 'alarm', hour, minute, label: "Bigfoot's Day" } }
+  }
+
+  const shoppingMatch = text.match(/^(?:please\s+)?(?:add|put)\s+(.+?)\s+(?:to|on)\s+(?:my\s+)?shopping\s+list[.!?]*$/i)
+  if (shoppingMatch?.[1]?.trim()) {
+    const item = shoppingMatch[1].trim().replace(/[.!?]+$/, '')
+    const task: Task = { id: uid(), text: `Shopping — ${item}`, due: today, done: false, important: false, updatedAt: stamp }
+    return { reply: `Done. I added ${item} to your shopping list.`, changes: { tasks: [task, ...state.tasks] } }
+  }
+
+  if (/\b(?:what(?:'s| is)|read|show)\s+(?:is\s+)?(?:on\s+)?(?:my\s+)?shopping\s+list\b/i.test(q)) {
+    const shopping = open.filter(t => t.text.toLowerCase().startsWith('shopping —')).map(t => t.text.replace(/^Shopping —\s*/i, ''))
+    return { reply: shopping.length ? `Your shopping list has ${shopping.length} item${shopping.length === 1 ? '' : 's'}: ${shopping.join(', ')}.` : 'Your shopping list is empty. Say, add milk to my shopping list.' }
+  }
+
+  const mapMatch = text.match(/^(?:please\s+)?(?:open\s+maps?|map|directions?|navigate)(?:\s+(?:to|for))?\s*(.*?)[.!?]*$/i)
+  if (mapMatch) {
+    const query = mapMatch[1].trim()
+    return { reply: query ? `I’m opening Maps for ${query}.` : 'I’m opening Maps. Tell Maps where you want to go.', action: { type: 'map', query } }
+  }
+
+  if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?camera[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera.', action: { type: 'camera' } }
+  if (/^(?:please\s+)?open\s+(?:phone\s+|device\s+)?settings[.!?]*$/i.test(text)) return { reply: 'I’m opening your phone settings.', action: { type: 'settings' } }
+  if (/^(?:please\s+)?(?:open|continue (?:in|with)|use)\s+(?:the\s+)?chatgpt[.!?]*$/i.test(text)) return { reply: 'I’m opening ChatGPT for more detailed help.', action: { type: 'chatgpt' } }
+
+  const callMatch = text.match(/^(?:please\s+)?call\s+(.+?)[.!?]*$/i)
+  if (callMatch?.[1]) {
+    const wanted = callMatch[1].trim().toLowerCase()
+    const person = state.people.find(p => !p.deleted && (p.name.toLowerCase().includes(wanted) || wanted.includes(p.name.toLowerCase())))
+    return person ? { reply: `I’m opening the phone for ${person.name}. Check the number, then tap Call.`, action: { type: 'call', phone: person.phone } } : { reply: `I could not find ${callMatch[1].trim()} in People. Add them there first so I use the right number.` }
+  }
 
   const addTask = text.match(/^(?:please\s+)?(?:add|put)\s+(.+?)(?:\s+to\s+(?:my\s+)?list)$/i)
     || text.match(/^(?:please\s+)?(?:remind me to|remember to)\s+(.+)$/i)
@@ -508,7 +584,7 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
     return { reply: `Today is ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.` }
   }
   if (/help|what can you do/.test(q)) {
-    return { reply: 'I can manage your day, read your list, add a task, complete a task, save a note, tell the time, and help you find your saved people. For example, say: add call the doctor to my list.' }
+    return { reply: 'I can manage your day; read and update your list; keep shopping items and notes; set Samsung timers and alarms; open Maps, the camera, and phone settings; call a saved person; tell the time; announce recognized callers; and open ChatGPT for detailed help. For example, say: set a timer for 10 minutes.' }
   }
   if (/brief|today|focus|list|need to do|manage my day|what.*next/.test(q)) {
     if (!open.length) return { reply: 'Your list is clear right now. You’re all caught up.' }
