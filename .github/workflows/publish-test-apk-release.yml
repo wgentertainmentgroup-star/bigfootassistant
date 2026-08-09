@@ -17,8 +17,54 @@ permissions:
   contents: write
 
 jobs:
+  verify-android-runtime:
+    name: Verify app and voice stay on-screen
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install and verify web application
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run build
+          npx cap sync android
+
+      - name: Enable Android emulator acceleration
+        run: |
+          sudo usermod -a -G kvm $USER
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android activity and voice lifecycle regressions
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest
+
   publish-apk:
     name: Build and publish permanent APK download
+    needs: verify-android-runtime
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -56,14 +102,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.7.1-Quality-Bubba.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.8-Safe-Voice.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.7.1-quality-bubba \
-            Bigfoots-Day-v0.7.1-Quality-Bubba.apk \
+          gh release create v0.8-safe-voice \
+            Bigfoots-Day-v0.8-Safe-Voice.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.7.1 — Quality Bubba Build" \
-            --notes "Regression-tested Samsung Z Fold5 APK. Removes the external white speech screen, listens inside the animated Bubba HUD, uses a calm UK-style system voice with US fallback, prevents failed voice lessons from advancing, clearly labels the repaired home-screen icon, and preserves the guided senior-friendly setup."
+            --title "Bigfoot's Day v0.8 — Safe Voice Build" \
+            --notes "Release-gated Samsung Z Fold5 APK. Voice input uses Android's in-app recognizer and prefers on-device recognition, with an emulator regression proving MainActivity remains visible and resumed. Adds large one-tap daily briefing, timer, alarm, shopping, Maps, camera, saved-contact calling, caller ID, notes, reminders, and ChatGPT handoff features. Includes the nine-step senior-friendly setup and a clearly labeled v0.8 home-screen icon."
