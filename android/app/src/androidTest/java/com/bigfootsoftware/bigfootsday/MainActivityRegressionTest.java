@@ -17,6 +17,7 @@ import androidx.test.uiautomator.Until;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -38,9 +39,11 @@ public class MainActivityRegressionTest {
             assertTrue(clickByText(scenario, "Practice talking"));
 
             UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
-            UiObject2 allow = device.wait(Until.findObject(By.res("com.android.permissioncontroller:id/permission_allow_foreground_only_button")), 5000L);
-            if (allow == null) allow = device.findObject(By.textContains("While using the app"));
-            if (allow == null) allow = device.findObject(By.text("Allow"));
+            assertTrue(
+                "Android microphone permission dialog must open on a fresh install",
+                device.wait(Until.hasObject(By.pkg(Pattern.compile(".*permissioncontroller.*"))), 10000L)
+            );
+            UiObject2 allow = findPermissionAllowButton(device);
             assertNotNull("Android microphone permission prompt must appear on a fresh install", allow);
             allow.click();
             device.waitForIdle();
@@ -170,6 +173,34 @@ public class MainActivityRegressionTest {
         try {
             InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(targetPackage(), Manifest.permission.RECORD_AUDIO);
         } catch (Exception ignored) {}
+    }
+
+    private UiObject2 findPermissionAllowButton(UiDevice device) {
+        String[] controllers = {
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+            "com.samsung.android.permissioncontroller"
+        };
+        String[] allowIds = {
+            "permission_allow_foreground_only_button",
+            "permission_allow_one_time_button",
+            "permission_allow_button"
+        };
+        for (String controller : controllers) {
+            for (String id : allowIds) {
+                UiObject2 button = device.findObject(By.res(controller + ":id/" + id));
+                if (button != null) return button;
+            }
+        }
+        for (UiObject2 candidate : device.findObjects(By.clickable(true))) {
+            String text = candidate.getText();
+            if (text == null) continue;
+            String normalized = text.toLowerCase();
+            if (normalized.contains("while using") || normalized.contains("only this time") || normalized.equals("allow")) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private String targetPackage() {
