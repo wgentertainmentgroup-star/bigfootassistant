@@ -11,11 +11,11 @@ export const defaultState: AppState = {
   people: [],
   notes: [],
   chat: [
-    { role: 'assistant', text: "Hi. I’m Scout, your Bigfoot’s Day assistant. Tell me what you need, or tap one of the big buttons below." },
+    { role: 'assistant', text: "Hi. I’m Bubba, your Bigfoot’s Day assistant. Tell me what you need, or tap one of the big buttons below." },
   ],
   preferences: {
     userName: 'Bryan',
-    assistantName: 'Scout',
+    assistantName: 'Bubba',
     voice: true,
     largeText: true,
     highContrast: false,
@@ -23,6 +23,7 @@ export const defaultState: AppState = {
     companionToken: appToken,
     autoSync: Boolean(serviceBase),
     setupComplete: false,
+    learningStep: 0,
   },
 }
 
@@ -41,6 +42,7 @@ export function loadState(): AppState {
       preferences: {
         ...defaultState.preferences,
         ...parsed.preferences,
+        assistantName: !parsed.preferences?.assistantName || parsed.preferences.assistantName === 'Scout' ? 'Bubba' : parsed.preferences.assistantName,
         apiBase: serviceBase || parsed.preferences?.apiBase || '',
         companionToken: appToken || parsed.preferences?.companionToken || '',
       },
