@@ -81,6 +81,10 @@ describe('Bubba local assistant regression suite', () => {
     expect(localAssistant('Open phone settings', freshState()).action).toEqual({ type: 'settings' })
   })
 
+  it('opens Samsung Camera in video mode from speech', () => {
+    expect(localAssistant('Open video camera', freshState()).action).toEqual({ type: 'video' })
+  })
+
   it('hands detailed questions to the installed ChatGPT app', () => {
     expect(localAssistant('Open ChatGPT', freshState()).action).toEqual({ type: 'chatgpt' })
   })
@@ -246,6 +250,9 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('AlarmClock.ACTION_SET_TIMER')
     expect(java).toContain('AlarmClock.ACTION_SET_ALARM')
     expect(java).toContain('MediaStore.ACTION_IMAGE_CAPTURE')
+    expect(java).toContain('MediaStore.ACTION_VIDEO_CAPTURE')
+    expect(app).toContain('<b>Photo Camera</b>')
+    expect(app).toContain('<b>Video Camera</b>')
     expect(java).toContain('Settings.ACTION_SETTINGS')
     expect(manifest).toContain('com.android.alarm.permission.SET_ALARM')
   })
