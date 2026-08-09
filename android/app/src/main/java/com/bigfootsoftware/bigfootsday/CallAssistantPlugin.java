@@ -4,6 +4,9 @@ import android.Manifest;
 import android.app.role.RoleManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
+import android.graphics.drawable.Icon;
 import android.os.Build;
 import androidx.activity.result.ActivityResult;
 
@@ -23,6 +26,36 @@ import org.json.JSONObject;
     permissions = { @Permission(alias = "contacts", strings = { Manifest.permission.READ_CONTACTS }) }
 )
 public class CallAssistantPlugin extends Plugin {
+    @PluginMethod
+    public void requestHomeShortcut(PluginCall call) {
+        JSObject result = new JSObject();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            result.put("requested", false);
+            call.resolve(result);
+            return;
+        }
+
+        ShortcutManager manager = getContext().getSystemService(ShortcutManager.class);
+        if (manager == null || !manager.isRequestPinShortcutSupported()) {
+            result.put("requested", false);
+            call.resolve(result);
+            return;
+        }
+
+        Intent launchIntent = new Intent(getContext(), MainActivity.class)
+            .setAction(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER);
+        ShortcutInfo shortcut = new ShortcutInfo.Builder(getContext(), "bigfoots-day-home")
+            .setShortLabel("Bigfoot’s Day")
+            .setLongLabel("Open Bigfoot’s Day")
+            .setIcon(Icon.createWithResource(getContext(), R.mipmap.ic_launcher))
+            .setIntent(launchIntent)
+            .build();
+
+        result.put("requested", manager.requestPinShortcut(shortcut, null));
+        call.resolve(result);
+    }
+
     @PluginMethod
     public void requestCallerIdAccess(PluginCall call) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
