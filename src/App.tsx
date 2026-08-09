@@ -7,7 +7,7 @@ import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v7'
+const setupMarker = 'bigfoots-day-easy-setup-v071'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -116,18 +116,18 @@ function App() {
     setListening(true)
     const result = await captureVoiceOnce()
     setListening(false)
-    if (result.text) await askAssistant(result.text)
-    else notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
+    if (result.text) { await askAssistant(result.text); return true }
+    notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
+    return false
   }
 
   async function toggleLiveVoice() {
     if (realtimeRef.current) {
-      realtimeRef.current.stop(); realtimeRef.current = null; setLiveVoice(false); notify('Live conversation ended.'); return
+      realtimeRef.current.stop(); realtimeRef.current = null; setLiveVoice(false); notify('Live conversation ended.'); return true
     }
     if (!state.preferences.apiBase.trim()) {
       setSection('assistant')
-      await startListening()
-      return
+      return startListening()
     }
     try {
       setSection('assistant')
@@ -139,7 +139,8 @@ function App() {
         onAssistantText: text => setState(s => ({ ...s, chat: [...s.chat, { role: 'assistant', text }] })),
       })
       setLiveVoice(true)
-    } catch { setLiveVoice(false); notify('Live Bubba could not connect. Check Settings and microphone permission.') }
+      return true
+    } catch { setLiveVoice(false); notify('Live Bubba could not connect. Check Settings and microphone permission.'); return false }
   }
 
   async function launchChatGPT() {
@@ -275,10 +276,10 @@ function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; 
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<void>; openChatGPT: () => Promise<void>; advanceLearning: () => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<boolean>; openChatGPT: () => Promise<void>; advanceLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
-    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap below, say “What can you do?”, then listen to Bubba’s answer.', action: '🎙 Practice talking', run: async () => { await talk(); advanceLearning() } },
+    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap below, say “What can you do?”, then listen to Bubba’s answer.', action: '🎙 Practice talking', run: async () => { if (await talk()) advanceLearning() } },
     { title: 'Lesson 2: Use your list', copy: 'See how Bubba adds something to your list for you.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); advanceLearning() } },
     { title: 'Lesson 3: Save a note', copy: 'Bubba can remember a short note so you do not have to.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); advanceLearning() } },
     { title: 'Lesson 4: Get detailed help', copy: 'For detailed questions, Bigfoot’s Day opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
@@ -299,7 +300,7 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, advan
   </div>
 }
 
-function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleLiveVoice, openChatGPT }: { state: AppState; thinking: boolean; listening: boolean; liveVoice: boolean; ask: (s: string) => void; listen: () => void; toggleLiveVoice: () => Promise<void>; openChatGPT: () => Promise<void> }) {
+function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleLiveVoice, openChatGPT }: { state: AppState; thinking: boolean; listening: boolean; liveVoice: boolean; ask: (s: string) => void; listen: () => void; toggleLiveVoice: () => Promise<boolean>; openChatGPT: () => Promise<void> }) {
   const [input, setInput] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
   useEffect(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), [state.chat, thinking])

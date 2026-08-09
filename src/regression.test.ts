@@ -65,6 +65,8 @@ describe('Android voice and setup safety contracts', () => {
   const java = readFileSync('android/app/src/main/java/com/bigfootsoftware/bigfootsday/CallAssistantPlugin.java', 'utf8')
   const app = readFileSync('src/App.tsx', 'utf8')
   const manifest = readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8')
+  const nativeBridge = readFileSync('src/native.ts', 'utf8')
+  const labels = readFileSync('android/app/src/main/res/values/strings.xml', 'utf8')
 
   it('uses in-app SpeechRecognizer instead of the external white-screen activity', () => {
     expect(java).toContain('SpeechRecognizer.createSpeechRecognizer')
@@ -85,6 +87,32 @@ describe('Android voice and setup safety contracts', () => {
   it('keeps the nine-step setup and voice pass/fail check', () => {
     expect(app).toContain('Setup step ${step + 1} of 9')
     expect(app).toContain("status: 'idle' | 'listening' | 'passed' | 'failed'")
+  })
+
+  it('does not graduate the voice lesson when listening fails', () => {
+    expect(app).toContain('if (await talk()) advanceLearning()')
+  })
+
+  it('uses a calm UK speech profile with a US fallback', () => {
+    expect(java).toContain('setLanguage(Locale.UK)')
+    expect(java).toContain('setLanguage(Locale.US)')
+    expect(java).toContain('setPitch(0.82f)')
+  })
+
+  it('preserves caller identification, contacts, and ChatGPT handoff', () => {
+    expect(manifest).toContain('android.telecom.CallScreeningService')
+    expect(manifest).toContain('android.permission.READ_CONTACTS')
+    expect(java).toContain('ROLE_CALL_SCREENING')
+    expect(java).toContain('com.openai.chatgpt')
+  })
+
+  it('preserves reminders and the home-screen shortcut', () => {
+    expect(nativeBridge).toContain('LocalNotifications.schedule')
+    expect(java).toContain('requestPinShortcut')
+  })
+
+  it('gives the repaired package a distinguishable home-screen label', () => {
+    expect(labels).toContain("Bigfoot\\'s Day v0.7.1")
   })
 
   it('does not permit cleartext network traffic', () => {

@@ -2,6 +2,7 @@ package com.bigfootsoftware.bigfootsday;
 
 import android.Manifest;
 import android.app.role.RoleManager;
+import android.media.AudioAttributes;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ShortcutInfo;
@@ -15,6 +16,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import androidx.activity.result.ActivityResult;
 
 import com.getcapacitor.JSObject;
@@ -27,6 +29,7 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -169,14 +172,31 @@ public class CallAssistantPlugin extends Plugin {
                     resolveSpeech(call, false, "Android text-to-speech is not ready.");
                     return;
                 }
-                int language = textToSpeech.setLanguage(Locale.US);
+                int language = textToSpeech.setLanguage(Locale.UK);
+                if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    language = textToSpeech.setLanguage(Locale.US);
+                }
                 if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
                     resolveSpeech(call, false, "The English voice is not installed.");
                     return;
                 }
-                textToSpeech.setSpeechRate(0.90f);
-                textToSpeech.setPitch(0.88f);
-                int queued = textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bigfoot-scout");
+                Set<Voice> voices = textToSpeech.getVoices();
+                if (voices != null) {
+                    for (Voice voice : voices) {
+                        String name = voice.getName().toLowerCase(Locale.US);
+                        if (Locale.UK.getLanguage().equals(voice.getLocale().getLanguage()) && (name.contains("gbb") || name.contains("gbd") || name.contains("male"))) {
+                            textToSpeech.setVoice(voice);
+                            break;
+                        }
+                    }
+                }
+                textToSpeech.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build());
+                textToSpeech.setSpeechRate(0.92f);
+                textToSpeech.setPitch(0.82f);
+                int queued = textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bigfoot-bubba");
                 resolveSpeech(call, queued == TextToSpeech.SUCCESS, queued == TextToSpeech.SUCCESS ? "" : "Android could not play the voice.");
             });
         });
