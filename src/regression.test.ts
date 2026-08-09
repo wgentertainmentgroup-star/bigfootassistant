@@ -90,6 +90,18 @@ describe('saved-state compatibility', () => {
     expect(restored.preferences.assistantName).toBe('Bubba')
     expect(restored.notes[0].text).toBe('Keep this')
   })
+
+  it('adds senior-friendly defaults to an older saved profile', () => {
+    const old = freshState()
+    delete (old.preferences as unknown as Record<string, unknown>).slowVoice
+    delete (old.preferences as unknown as Record<string, unknown>).trustedHelperName
+    delete (old.preferences as unknown as Record<string, unknown>).trustedHelperPhone
+    saveState(old)
+    const restored = loadState()
+    expect(restored.preferences.slowVoice).toBe(true)
+    expect(restored.preferences.trustedHelperName).toBe('')
+    expect(restored.preferences.trustedHelperPhone).toBe('')
+  })
 })
 
 describe('Android voice and setup safety contracts', () => {
@@ -117,8 +129,9 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('The app will stay on this screen.')
   })
 
-  it('keeps the nine-step setup and voice pass/fail check', () => {
-    expect(app).toContain('Setup step ${step + 1} of 9')
+  it('keeps the eleven-step setup and voice pass/fail check', () => {
+    expect(app).toContain('Setup step ${step + 1} of 11')
+    expect(app).toContain("['Welcome', 'About you', 'Text size', 'Voice speed', 'Voice test', 'Reminders', 'Caller ID', 'Trusted helper', 'Connections', 'Learning', 'Ready']")
     expect(app).toContain("status: 'idle' | 'listening' | 'passed' | 'failed'")
   })
 
@@ -130,6 +143,13 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('setLanguage(Locale.UK)')
     expect(java).toContain('setLanguage(Locale.US)')
     expect(java).toContain('setPitch(0.82f)')
+    expect(java).toContain('slow ? 0.78f : 0.92f')
+  })
+
+  it('requires confirmation before placing calls and supports one trusted helper', () => {
+    expect(app).toContain('window.confirm(`Call ${name} at ${phone}?`)')
+    expect(app).toContain('Call My Helper')
+    expect(app).toContain('This button does not contact emergency services.')
   })
 
   it('preserves caller identification, contacts, and ChatGPT handoff', () => {
@@ -153,8 +173,8 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.8 Voice')
-    expect(app).toContain("const appVersion = 'v0.8 SAFE VOICE'")
+    expect(labels).toContain('Bigfoot v0.9 Easy')
+    expect(app).toContain("const appVersion = 'v0.9 EASY SETUP'")
   })
 
   it('does not permit cleartext network traffic', () => {
