@@ -9,6 +9,7 @@ on:
       - .github/workflows/publish-test-apk-release.yml
       - android/app/build.gradle
       - android/app/src/main/**
+      - android/app/src/androidTest/**
       - src/**
       - package.json
       - package-lock.json
