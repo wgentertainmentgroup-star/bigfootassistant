@@ -2,7 +2,8 @@
 	"appId": "com.bigfootsoftware.bigfootsday",
 	"appName": "Bigfoot's Day",
 	"webDir": "dist",
+	"backgroundColor": "#030b11",
 	"android": {
-		"allowMixedContent": true
+		"allowMixedContent": false
 	}
 }
