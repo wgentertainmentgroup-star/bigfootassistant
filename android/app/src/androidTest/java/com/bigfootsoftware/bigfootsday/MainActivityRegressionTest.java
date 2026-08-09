@@ -5,6 +5,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import android.Manifest;
+import android.content.pm.PackageManager;
 import androidx.lifecycle.Lifecycle;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -16,40 +17,21 @@ import androidx.test.uiautomator.Until;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.MethodSorters;
 
 @RunWith(AndroidJUnit4.class)
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class MainActivityRegressionTest {
     @Test
-    public void freshInstallCompletesEverySetupScreenWithoutLeavingTheApp() throws Exception {
-        grantMicrophonePermission();
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            resetToFreshInstall(scenario);
-            completeSetup(scenario);
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
-            assertHealthyBigfootPage(scenario);
-            assertEquals("Setup finish must not launch Samsung shortcut UI", Lifecycle.State.RESUMED, scenario.getState());
-        }
-    }
-
-    @Test
-    public void actualFirstLessonButtonStartsVoiceWithoutAWhiteScreen() throws Exception {
-        grantMicrophonePermission();
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            resetToFreshInstall(scenario);
-            completeSetup(scenario);
-            assertTrue(clickByText(scenario, "Practice talking"));
-            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('.assistant-page'))", "true"));
-            Thread.sleep(2200L);
-            assertHealthyBigfootPage(scenario);
-            assertEquals("The real first lesson must keep MainActivity resumed", Lifecycle.State.RESUMED, scenario.getState());
-        }
-    }
-
-    @Test
-    public void firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt() throws Exception {
-        revokeMicrophonePermission();
+    public void a_firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt() throws Exception {
+        assertEquals(
+            "The first device test must begin without microphone permission",
+            PackageManager.PERMISSION_DENIED,
+            InstrumentationRegistry.getInstrumentation().getTargetContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+        );
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
@@ -71,7 +53,33 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
+    public void b_freshInstallCompletesEverySetupScreenWithoutLeavingTheApp() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
+            assertHealthyBigfootPage(scenario);
+            assertEquals("Setup finish must not launch Samsung shortcut UI", Lifecycle.State.RESUMED, scenario.getState());
+        }
+    }
+
+    @Test
+    public void c_actualFirstLessonButtonStartsVoiceWithoutAWhiteScreen() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            assertTrue(clickByText(scenario, "Practice talking"));
+            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('.assistant-page'))", "true"));
+            Thread.sleep(2200L);
+            assertHealthyBigfootPage(scenario);
+            assertEquals("The real first lesson must keep MainActivity resumed", Lifecycle.State.RESUMED, scenario.getState());
+        }
+    }
+
+    @Test
+    public void d_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -161,12 +169,6 @@ public class MainActivityRegressionTest {
     private void grantMicrophonePermission() {
         try {
             InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(targetPackage(), Manifest.permission.RECORD_AUDIO);
-        } catch (Exception ignored) {}
-    }
-
-    private void revokeMicrophonePermission() {
-        try {
-            InstrumentationRegistry.getInstrumentation().getUiAutomation().revokeRuntimePermission(targetPackage(), Manifest.permission.RECORD_AUDIO);
         } catch (Exception ignored) {}
     }
 
