@@ -2,7 +2,7 @@
 
 A local-first personal assistant designed for a single user, with a large, calm interface for Windows and Android.
 
-For the private Cloudflare-backed Android deployment, follow [OWNER_SETUP.md](OWNER_SETUP.md). The normal phone setup never asks the user for a server address, private token, OpenAI key, or Google client secret.
+The normal Android test build works without a developer account, service address, or private connection code.
 
 ## What works now
 
