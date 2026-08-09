@@ -181,6 +181,7 @@ public class CallAssistantPlugin extends Plugin {
     @PluginMethod
     public void speakText(PluginCall call) {
         String text = call.getString("text", "").trim();
+        boolean slow = Boolean.TRUE.equals(call.getBoolean("slow", false));
         if (text.isEmpty()) {
             resolveSpeech(call, false, "There is no text to speak.");
             return;
@@ -214,7 +215,7 @@ public class CallAssistantPlugin extends Plugin {
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build());
-                textToSpeech.setSpeechRate(0.92f);
+                textToSpeech.setSpeechRate(slow ? 0.78f : 0.92f);
                 textToSpeech.setPitch(0.82f);
                 int queued = textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bigfoot-bubba");
                 resolveSpeech(call, queued == TextToSpeech.SUCCESS, queued == TextToSpeech.SUCCESS ? "" : "Android could not play the voice.");
