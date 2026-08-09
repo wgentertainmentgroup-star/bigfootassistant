@@ -40,8 +40,11 @@ export type Preferences = {
   userName: string
   assistantName: string
   voice: boolean
+  slowVoice: boolean
   largeText: boolean
   highContrast: boolean
+  trustedHelperName: string
+  trustedHelperPhone: string
   apiBase: string
   companionToken: string
   autoSync: boolean
