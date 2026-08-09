@@ -41,9 +41,21 @@ describe('Bubba local assistant regression suite', () => {
     expect(result.action).toEqual({ type: 'timer', seconds: 600, label: "Bubba's timer" })
   })
 
+  it('supports seconds and hours while safely capping an oversized timer', () => {
+    expect(localAssistant('Set timer for 30 seconds', freshState()).action).toEqual({ type: 'timer', seconds: 30, label: "Bubba's timer" })
+    expect(localAssistant('Set a timer for 2 hours', freshState()).action).toEqual({ type: 'timer', seconds: 7200, label: "Bubba's timer" })
+    expect(localAssistant('Set a timer for 100 hours', freshState()).action).toEqual({ type: 'timer', seconds: 86399, label: "Bubba's timer" })
+  })
+
   it('sets a 7:30 PM alarm using 24-hour Android time', () => {
     const result = localAssistant('Set an alarm for 7:30 PM', freshState())
     expect(result.action).toEqual({ type: 'alarm', hour: 19, minute: 30, label: "Bigfoot's Day" })
+  })
+
+  it('rejects an invalid alarm minute instead of opening Android Clock', () => {
+    const result = localAssistant('Set an alarm for 7:99 PM', freshState())
+    expect(result.action).toBeUndefined()
+    expect(result.reply).toContain('not valid')
   })
 
   it('keeps a separate spoken shopping list', () => {
@@ -54,10 +66,23 @@ describe('Bubba local assistant regression suite', () => {
     expect(localAssistant('What is on my shopping list?', state).reply).toContain('milk')
   })
 
+  it('does not read completed or deleted shopping items', () => {
+    const state = freshState()
+    state.tasks = [
+      { id: 'done', text: 'Shopping — bread', due: '', done: true, important: false, updatedAt: new Date().toISOString() },
+      { id: 'deleted', text: 'Shopping — eggs', due: '', done: false, important: false, deleted: true, updatedAt: new Date().toISOString() },
+    ]
+    expect(localAssistant('What is on my shopping list?', state).reply).toContain('empty')
+  })
+
   it('opens maps, camera and phone settings through native actions', () => {
     expect(localAssistant('Directions to the pharmacy', freshState()).action).toEqual({ type: 'map', query: 'the pharmacy' })
     expect(localAssistant('Open camera', freshState()).action).toEqual({ type: 'camera' })
     expect(localAssistant('Open phone settings', freshState()).action).toEqual({ type: 'settings' })
+  })
+
+  it('hands detailed questions to the installed ChatGPT app', () => {
+    expect(localAssistant('Open ChatGPT', freshState()).action).toEqual({ type: 'chatgpt' })
   })
 
   it('calls only a person already saved by the user', () => {
@@ -65,6 +90,22 @@ describe('Bubba local assistant regression suite', () => {
     state.people = [{ id: 'jane', name: 'Jane', phone: '5551234567', relationship: 'Daughter', favorite: true, updatedAt: new Date().toISOString() }]
     expect(localAssistant('Call Jane', state).action).toEqual({ type: 'call', phone: '5551234567' })
     expect(localAssistant('Call Someone Else', state).action).toBeUndefined()
+  })
+
+  it('does not complete a task that is not on the open list', () => {
+    const result = localAssistant('Mark pick up medicine done', freshState())
+    expect(result.changes).toBeUndefined()
+    expect(result.reply).toContain('couldn’t find')
+  })
+
+  it('puts an important item first in the daily briefing', () => {
+    const state = freshState()
+    const stamp = new Date().toISOString()
+    state.tasks = [
+      { id: 'ordinary', text: 'Water plants', due: '', done: false, important: false, updatedAt: stamp },
+      { id: 'important', text: 'Take medicine', due: '', done: false, important: true, updatedAt: stamp },
+    ]
+    expect(localAssistant('Manage my day', state).reply).toContain('1, Take medicine. 2, Water plants')
   })
 })
 
@@ -102,6 +143,13 @@ describe('saved-state compatibility', () => {
     expect(restored.preferences.trustedHelperName).toBe('')
     expect(restored.preferences.trustedHelperPhone).toBe('')
   })
+
+  it('recovers safely from corrupt saved data', () => {
+    localStorage.setItem('bigfoots-day-state-v1', '{not-json')
+    const restored = loadState()
+    expect(restored.preferences.assistantName).toBe('Bubba')
+    expect(restored.tasks[0].id).toBe('welcome-task')
+  })
 })
 
 describe('Android voice and setup safety contracts', () => {
@@ -110,12 +158,32 @@ describe('Android voice and setup safety contracts', () => {
   const manifest = readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8')
   const nativeBridge = readFileSync('src/native.ts', 'utf8')
   const labels = readFileSync('android/app/src/main/res/values/strings.xml', 'utf8')
+  const activity = readFileSync('android/app/src/main/java/com/bigfootsoftware/bigfootsday/MainActivity.java', 'utf8')
+  const androidE2E = readFileSync('android/app/src/androidTest/java/com/bigfootsoftware/bigfootsday/MainActivityRegressionTest.java', 'utf8')
+  const workflow = readFileSync('.github/workflows/publish-test-apk-release.yml', 'utf8')
+  const capacitor = readFileSync('capacitor.config.ts', 'utf8')
 
   it('uses in-app SpeechRecognizer instead of the external white-screen activity', () => {
     expect(java).toContain('SpeechRecognizer.createSpeechRecognizer')
-    expect(java).toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
-    expect(java).toContain('SpeechRecognizer.isOnDeviceRecognitionAvailable')
+    expect(java).toContain('SpeechRecognizer.createSpeechRecognizer(getActivity())')
+    expect(java).not.toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
     expect(java).not.toContain('startActivityForResult(call, intent, "speechResult")')
+    expect(nativeBridge).toContain('/Android/i.test(navigator.userAgent)')
+    expect(app).toContain('if (isAndroidDevice()) return requestVoiceInput()')
+  })
+
+  it('renders the assistant before microphone access and never auto-opens shortcut setup', () => {
+    expect(app).toContain("flushSync(() => setSection('assistant'))")
+    expect(app).not.toContain("localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut()")
+    expect(app).toContain('Add Icon to Home')
+  })
+
+  it('uses a dark native fallback and automatically recovers a genuinely empty WebView', () => {
+    expect(activity).toContain('setBackgroundColor(Color.rgb(3, 11, 17))')
+    expect(activity).toContain("document.querySelector('.app,.setup-shell')")
+    expect(activity).toContain('webView.reload()')
+    expect(capacitor).toContain("backgroundColor: '#030b11'")
+    expect(capacitor).toContain('allowMixedContent: false')
   })
 
   it('has a listening timeout and actionable error messages', () => {
@@ -164,6 +232,16 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('requestPinShortcut')
   })
 
+  it('runs the real fresh-install setup and first-lesson buttons in Android', () => {
+    expect(androidE2E).toContain('freshInstallCompletesEverySetupScreenWithoutLeavingTheApp')
+    expect(androidE2E).toContain('actualFirstLessonButtonStartsVoiceWithoutAWhiteScreen')
+    expect(androidE2E).toContain('firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt')
+    expect(androidE2E).toContain('coreUserJourneyAddsAndPersistsTasksPeopleAndNotes')
+    expect(androidE2E).toContain('document.body.innerText.includes(\'Lesson 1: Talk to Bubba\')')
+    expect(androidE2E).toContain('Bigfoot rendered a blank or white page')
+    expect(workflow).toContain(':app:connectedDebugAndroidTest')
+  })
+
   it('provides native assistant tools without cloud setup', () => {
     expect(java).toContain('AlarmClock.ACTION_SET_TIMER')
     expect(java).toContain('AlarmClock.ACTION_SET_ALARM')
@@ -173,8 +251,8 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.9 Easy')
-    expect(app).toContain("const appVersion = 'v0.9 EASY SETUP'")
+    expect(labels).toContain('Bigfoot v0.10 E2E')
+    expect(app).toContain("const appVersion = 'v0.10 E2E GATED'")
   })
 
   it('does not permit cleartext network traffic', () => {
