@@ -46,6 +46,7 @@ export type Preferences = {
   companionToken: string
   autoSync: boolean
   setupComplete: boolean
+  learningStep: number
 }
 
 export type AppState = {
