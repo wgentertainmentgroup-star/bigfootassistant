@@ -76,6 +76,7 @@ public class MainActivityRegressionTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Photo Camera') && document.body.innerText.includes('Video Camera')", "true"));
 
             assertTrue(clickByText(scenario, "My List"));
             setFieldAndSubmit(scenario, "Example: Call the doctor", "End-to-end doctor task", ".add-form");
