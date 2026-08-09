@@ -7,8 +7,8 @@ android {
         applicationId "com.bigfootsoftware.bigfootsday"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "0.7.0"
+        versionCode 8
+        versionName "0.7.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -19,7 +19,7 @@ android {
     buildTypes {
         debug {
             // A fresh package ID avoids signature conflicts with older disposable test APKs.
-            applicationIdSuffix ".v07test"
+            applicationIdSuffix ".v071test"
             versionNameSuffix "-test"
             debuggable true
         }
