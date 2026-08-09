@@ -33,7 +33,38 @@ describe('Bubba local assistant regression suite', () => {
   it('explains its offline capabilities', () => {
     const result = localAssistant('What can you do?', freshState())
     expect(result.reply).toContain('manage your day')
-    expect(result.reply).toContain('save a note')
+    expect(result.reply).toContain('timers and alarms')
+  })
+
+  it('sets a native ten-minute timer without a cloud account', () => {
+    const result = localAssistant('Set a timer for 10 minutes', freshState())
+    expect(result.action).toEqual({ type: 'timer', seconds: 600, label: "Bubba's timer" })
+  })
+
+  it('sets a 7:30 PM alarm using 24-hour Android time', () => {
+    const result = localAssistant('Set an alarm for 7:30 PM', freshState())
+    expect(result.action).toEqual({ type: 'alarm', hour: 19, minute: 30, label: "Bigfoot's Day" })
+  })
+
+  it('keeps a separate spoken shopping list', () => {
+    const state = freshState()
+    const added = localAssistant('Add milk to my shopping list', state)
+    expect(added.changes?.tasks?.[0].text).toBe('Shopping — milk')
+    state.tasks = added.changes?.tasks || []
+    expect(localAssistant('What is on my shopping list?', state).reply).toContain('milk')
+  })
+
+  it('opens maps, camera and phone settings through native actions', () => {
+    expect(localAssistant('Directions to the pharmacy', freshState()).action).toEqual({ type: 'map', query: 'the pharmacy' })
+    expect(localAssistant('Open camera', freshState()).action).toEqual({ type: 'camera' })
+    expect(localAssistant('Open phone settings', freshState()).action).toEqual({ type: 'settings' })
+  })
+
+  it('calls only a person already saved by the user', () => {
+    const state = freshState()
+    state.people = [{ id: 'jane', name: 'Jane', phone: '5551234567', relationship: 'Daughter', favorite: true, updatedAt: new Date().toISOString() }]
+    expect(localAssistant('Call Jane', state).action).toEqual({ type: 'call', phone: '5551234567' })
+    expect(localAssistant('Call Someone Else', state).action).toBeUndefined()
   })
 })
 
@@ -70,6 +101,8 @@ describe('Android voice and setup safety contracts', () => {
 
   it('uses in-app SpeechRecognizer instead of the external white-screen activity', () => {
     expect(java).toContain('SpeechRecognizer.createSpeechRecognizer')
+    expect(java).toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
+    expect(java).toContain('SpeechRecognizer.isOnDeviceRecognitionAvailable')
     expect(java).not.toContain('startActivityForResult(call, intent, "speechResult")')
   })
 
@@ -111,8 +144,17 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('requestPinShortcut')
   })
 
+  it('provides native assistant tools without cloud setup', () => {
+    expect(java).toContain('AlarmClock.ACTION_SET_TIMER')
+    expect(java).toContain('AlarmClock.ACTION_SET_ALARM')
+    expect(java).toContain('MediaStore.ACTION_IMAGE_CAPTURE')
+    expect(java).toContain('Settings.ACTION_SETTINGS')
+    expect(manifest).toContain('com.android.alarm.permission.SET_ALARM')
+  })
+
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain("Bigfoot\\'s Day v0.7.1")
+    expect(labels).toContain('Bigfoot v0.8 Voice')
+    expect(app).toContain("const appVersion = 'v0.8 SAFE VOICE'")
   })
 
   it('does not permit cleartext network traffic', () => {
