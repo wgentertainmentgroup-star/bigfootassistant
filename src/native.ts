@@ -11,6 +11,7 @@ type CallAssistant = {
   setAlarm(options: { hour: number; minute: number; label: string }): Promise<{ opened: boolean }>
   openMap(options: { query: string }): Promise<{ opened: boolean }>
   openCamera(): Promise<{ opened: boolean }>
+  openVideoCamera(): Promise<{ opened: boolean }>
   openDeviceSettings(): Promise<{ opened: boolean }>
   requestCallerIdAccess(): Promise<{ granted: boolean }>
   getLastCaller(): Promise<{ number: string; name: string; time: number }>
@@ -74,6 +75,7 @@ export const openMapSearch = (query: string) =>
   openNativeAction(() => CallAssistantPlugin.openMap({ query }))
 
 export const openCamera = () => openNativeAction(() => CallAssistantPlugin.openCamera())
+export const openVideoCamera = () => openNativeAction(() => CallAssistantPlugin.openVideoCamera())
 export const openDeviceSettings = () => openNativeAction(() => CallAssistantPlugin.openDeviceSettings())
 
 export async function requestCallerIdAccess() {
