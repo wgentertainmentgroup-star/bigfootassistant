@@ -1,13 +1,13 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultState, loadState, saveState } from './storage'
-import { getLastCaller, isAndroid, openChatGPT, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, syncPeopleForCallerId } from './native'
+import { addVoiceStateListener, getLastCaller, isAndroid, openChatGPT, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v6'
+const setupMarker = 'bigfoots-day-easy-setup-v7'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -36,6 +36,7 @@ function App() {
   const [liveVoice, setLiveVoice] = useState(false)
   const [lastCaller, setLastCaller] = useState('')
   const [toast, setToast] = useState('')
+  const [voiceUi, setVoiceUi] = useState<NativeVoiceState>({ state: 'idle' })
   const stateRef = useRef(state)
   const realtimeRef = useRef<RealtimeController | null>(null)
   stateRef.current = state
@@ -69,6 +70,16 @@ function App() {
   }, [state.preferences.autoSync, state.preferences.apiBase, state.preferences.companionToken])
 
   useEffect(() => () => realtimeRef.current?.stop(), [])
+  useEffect(() => {
+    let handle: { remove: () => Promise<void> } | null = null
+    let idleTimer = 0
+    void addVoiceStateListener(event => {
+      clearTimeout(idleTimer)
+      setVoiceUi(event)
+      if (event.state === 'complete') idleTimer = window.setTimeout(() => setVoiceUi({ state: 'idle' }), 700)
+    }).then(value => { handle = value })
+    return () => { clearTimeout(idleTimer); void handle?.remove() }
+  }, [])
 
   const todayTasks = useMemo(() => state.tasks.filter(t => !t.deleted && !t.done && (!t.due || t.due <= new Date().toISOString().slice(0, 10))), [state.tasks])
 
@@ -137,7 +148,7 @@ function App() {
   }
 
   const rootClass = `${state.preferences.largeText ? 'large-text' : ''} ${state.preferences.highContrast ? 'high-contrast' : ''}`
-  if (showSetup) return <SetupWizard state={state} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut(); setShowSetup(false); setSection('home') }} />
+  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut(); setShowSetup(false); setSection('home') }} />
   return <div className={`app ${rootClass}`}>
     <header className="topbar">
       <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
@@ -166,11 +177,18 @@ function App() {
     </div>
 
     <button className={`floating-mic ${liveVoice ? 'listening' : ''}`} onClick={() => void toggleLiveVoice()} aria-label="Talk to Bubba">🎙<span>{liveVoice ? 'End live talk' : 'Talk to Bubba'}</span></button>
+    <VoiceHud state={voiceUi} />
     {toast && <div className="toast" role="status">{toast}</div>}
   </div>
 }
 
-function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
+function VoiceHud({ state }: { state: NativeVoiceState }) {
+  if (state.state === 'idle' || state.state === 'complete') return null
+  const message = state.message || (state.state === 'hearing' ? 'I hear you…' : state.state === 'processing' ? 'Working on that…' : 'Listening…')
+  return <div className={`voice-hud ${state.state}`} role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>Speak normally. The app will stay on this screen.</small></div>
+}
+
+function SetupWizard({ state, voiceUi, onChange, onFinish }: { state: AppState; voiceUi: NativeVoiceState; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
   const [step, setStep] = useState(0)
   const [voiceTest, setVoiceTest] = useState<{ status: 'idle' | 'listening' | 'passed' | 'failed'; text: string }>({ status: 'idle', text: '' })
   const [reminderStatus, setReminderStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
@@ -253,6 +271,7 @@ function SetupWizard({ state, onChange, onFinish }: { state: AppState; onChange:
       <div className="setup-nav">{step > 0 ? <button className="setup-back" onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button> : <span />}{step < 8 ? <button className="setup-next" onClick={() => setStep(s => Math.min(8, s + 1))}>{step === 3 && voiceTest.status !== 'passed' ? 'Test later →' : step >= 4 && ((step === 4 && reminderStatus !== 'granted') || (step === 5 && callerStatus !== 'granted') || (step === 6 && p.apiBase.trim() && googleStatus !== 'connected')) ? 'Do this later →' : 'Continue →'}</button> : <button className="setup-next finish" onClick={onFinish}>Begin my first lesson</button>}</div>
       <p className="setup-footer">Take your time. Nothing here has to be perfect.</p>
     </main>
+    <VoiceHud state={voiceUi} />
   </div>
 }
 
@@ -451,7 +470,7 @@ function formatEmailDate(value: string) { const date = new Date(value); return N
 
 type LocalAssistantResult = { reply: string; changes?: Partial<AppState> }
 
-function localAssistant(text: string, state: AppState): LocalAssistantResult {
+export function localAssistant(text: string, state: AppState): LocalAssistantResult {
   const q = text.toLowerCase().trim()
   const now = new Date()
   const stamp = now.toISOString()

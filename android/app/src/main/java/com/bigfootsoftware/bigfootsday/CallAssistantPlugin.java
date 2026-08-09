@@ -8,7 +8,12 @@ import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import androidx.activity.result.ActivityResult;
 
@@ -34,6 +39,10 @@ import org.json.JSONObject;
 )
 public class CallAssistantPlugin extends Plugin {
     private TextToSpeech textToSpeech;
+    private SpeechRecognizer speechRecognizer;
+    private PluginCall activeVoiceCall;
+    private final Handler voiceHandler = new Handler(Looper.getMainLooper());
+    private Runnable voiceTimeout;
 
     @PluginMethod
     public void startVoiceInput(PluginCall call) {
@@ -41,7 +50,7 @@ public class CallAssistantPlugin extends Plugin {
             requestPermissionForAlias("microphone", call, "microphoneResult");
             return;
         }
-        launchSpeechInput(call);
+        startInAppSpeechRecognition(call);
     }
 
     @PermissionCallback
@@ -50,36 +59,93 @@ public class CallAssistantPlugin extends Plugin {
             resolveVoice(call, "", "Microphone permission was not allowed.");
             return;
         }
-        launchSpeechInput(call);
+        startInAppSpeechRecognition(call);
     }
 
-    private void launchSpeechInput(PluginCall call) {
-        try {
+    private void startInAppSpeechRecognition(PluginCall call) {
+        if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
+            resolveVoice(call, "", "Samsung could not find an enabled speech recognition service. Enable the Google app or Samsung voice input, then try again.");
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            finishVoice("", "A new voice request started.");
+            activeVoiceCall = call;
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext().getApplicationContext());
+            speechRecognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) { sendVoiceState("listening", "Listening…"); }
+                @Override public void onBeginningOfSpeech() { sendVoiceState("hearing", "I hear you…"); }
+                @Override public void onRmsChanged(float rmsdB) {
+                    JSObject event = new JSObject();
+                    event.put("state", "hearing");
+                    event.put("level", Math.max(0, Math.min(10, Math.round(rmsdB))));
+                    notifyListeners("voiceState", event);
+                }
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() { sendVoiceState("processing", "Working on that…"); }
+                @Override public void onError(int error) { finishVoice("", speechError(error)); }
+                @Override public void onResults(Bundle results) {
+                    ArrayList<String> choices = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    finishVoice(choices != null && !choices.isEmpty() ? choices.get(0) : "", choices == null || choices.isEmpty() ? "Nothing was heard. Please try again." : "");
+                }
+                @Override public void onPartialResults(Bundle partialResults) {}
+                @Override public void onEvent(int eventType, Bundle params) {}
+            });
+
             Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag());
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.US.toLanguageTag());
-            intent.putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false);
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Bubba");
-            if (intent.resolveActivity(getContext().getPackageManager()) == null) {
-                resolveVoice(call, "", "No speech recognition service is enabled on this phone.");
-                return;
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
+            voiceTimeout = () -> finishVoice("", "Listening timed out. Tap the microphone and try again.");
+            voiceHandler.postDelayed(voiceTimeout, 15000L);
+            sendVoiceState("starting", "Starting microphone…");
+            try {
+                speechRecognizer.startListening(intent);
+            } catch (Exception error) {
+                finishVoice("", "The microphone could not start. Close other apps using the microphone and try again.");
             }
-            startActivityForResult(call, intent, "speechResult");
-        } catch (Exception error) {
-            resolveVoice(call, "", "Speech recognition could not start.");
+        });
+    }
+
+    private String speechError(int error) {
+        switch (error) {
+            case SpeechRecognizer.ERROR_AUDIO: return "The microphone had an audio problem. Please try again.";
+            case SpeechRecognizer.ERROR_CLIENT: return "Voice listening stopped. Please tap the microphone again.";
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: return "Microphone permission is required. Open Android Settings, Apps, Bigfoot’s Day, Permissions, then allow Microphone.";
+            case SpeechRecognizer.ERROR_NETWORK:
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "The phone’s speech service could not connect. Check Wi-Fi or mobile data and try again.";
+            case SpeechRecognizer.ERROR_NO_MATCH: return "I could not understand that. Please speak clearly and try again.";
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return "The speech service is busy. Wait a moment and try again.";
+            case SpeechRecognizer.ERROR_SERVER: return "The phone’s speech service is temporarily unavailable. Please try again.";
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return "I did not hear speech. Tap the microphone and try again.";
+            default: return "Voice input stopped unexpectedly. Please try again.";
         }
     }
 
-    @ActivityCallback
-    private void speechResult(PluginCall call, ActivityResult result) {
-        String text = "";
-        if (result.getResultCode() == android.app.Activity.RESULT_OK && result.getData() != null) {
-            ArrayList<String> choices = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-            if (choices != null && !choices.isEmpty()) text = choices.get(0);
+    private void sendVoiceState(String state, String message) {
+        JSObject event = new JSObject();
+        event.put("state", state);
+        event.put("message", message);
+        notifyListeners("voiceState", event);
+    }
+
+    private void finishVoice(String text, String error) {
+        if (voiceTimeout != null) {
+            voiceHandler.removeCallbacks(voiceTimeout);
+            voiceTimeout = null;
         }
-        resolveVoice(call, text, text.isEmpty() ? "Nothing was heard. Please try again." : "");
+        PluginCall call = activeVoiceCall;
+        activeVoiceCall = null;
+        SpeechRecognizer recognizer = speechRecognizer;
+        speechRecognizer = null;
+        if (recognizer != null) {
+            recognizer.cancel();
+            recognizer.destroy();
+        }
+        if (call != null) resolveVoice(call, text, error);
+        sendVoiceState(error.isEmpty() ? "complete" : "idle", error);
     }
 
     private void resolveVoice(PluginCall call, String text, String error) {
@@ -125,6 +191,7 @@ public class CallAssistantPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        finishVoice("", "Voice listening ended because the app closed.");
         if (textToSpeech != null) {
             textToSpeech.stop();
             textToSpeech.shutdown();

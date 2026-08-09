@@ -1,4 +1,4 @@
-import { Capacitor, registerPlugin } from '@capacitor/core'
+import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import type { Person } from './types'
 import { LocalNotifications } from '@capacitor/local-notifications'
 
@@ -10,6 +10,7 @@ type CallAssistant = {
   requestCallerIdAccess(): Promise<{ granted: boolean }>
   getLastCaller(): Promise<{ number: string; name: string; time: number }>
   setKnownPeople(options: { people: Array<{ name: string; phone: string }> }): Promise<void>
+  addListener(eventName: 'voiceState', listener: (event: NativeVoiceState) => void): Promise<PluginListenerHandle>
 }
 
 const CallAssistantPlugin = registerPlugin<CallAssistant>('CallAssistant')
@@ -22,6 +23,12 @@ export async function requestHomeShortcut() {
 }
 
 export type VoiceInputResult = { text: string; error: string }
+export type NativeVoiceState = { state: 'idle' | 'starting' | 'listening' | 'hearing' | 'processing' | 'complete'; message?: string; level?: number }
+
+export async function addVoiceStateListener(listener: (event: NativeVoiceState) => void): Promise<PluginListenerHandle> {
+  if (!isAndroid()) return { remove: async () => undefined }
+  return CallAssistantPlugin.addListener('voiceState', listener)
+}
 
 export async function requestVoiceInput(): Promise<VoiceInputResult> {
   if (!isAndroid()) return { text: '', error: 'not-android' }

@@ -42,7 +42,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build Bigfoot's Day
-        run: npm run build
+        run: |
+          npm test
+          npm run build
 
       - name: Sync Android project
         run: npx cap sync android
@@ -54,14 +56,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.6-Bubba-Voice-Test.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.7-In-App-Bubba-Voice.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.6.0-bubba-voice-test \
-            Bigfoots-Day-v0.6-Bubba-Voice-Test.apk \
+          gh release create v0.7.0-in-app-bubba-voice \
+            Bigfoots-Day-v0.7-In-App-Bubba-Voice.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.6 — Bubba Voice Repair" \
-            --notes "Samsung Z Fold5 test APK. Uses native Android speech recognition and text-to-speech, includes a real setup voice test, changes Scout to Bubba, and teaches one capability at a time. Fresh test package ID avoids conflicts with earlier builds."
+            --title "Bigfoot's Day v0.7 — In-App Bubba Voice" \
+            --notes "Regression-tested Samsung Z Fold5 APK. Removes the external white speech screen, listens inside the animated Bubba HUD, uses native Android speech recognition and text-to-speech, and preserves the guided senior-friendly setup. Fresh v0.7 package identity avoids conflicts with earlier builds."
