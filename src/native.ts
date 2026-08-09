@@ -5,7 +5,7 @@ import { LocalNotifications } from '@capacitor/local-notifications'
 type CallAssistant = {
   requestHomeShortcut(): Promise<{ requested: boolean }>
   startVoiceInput(): Promise<{ text: string; error?: string }>
-  speakText(options: { text: string }): Promise<{ spoken: boolean; error?: string }>
+  speakText(options: { text: string; slow: boolean }): Promise<{ spoken: boolean; error?: string }>
   openChatGPT(): Promise<{ opened: boolean }>
   setTimer(options: { seconds: number; label: string }): Promise<{ opened: boolean }>
   setAlarm(options: { hour: number; minute: number; label: string }): Promise<{ opened: boolean }>
@@ -45,9 +45,9 @@ export async function requestVoiceInput(): Promise<VoiceInputResult> {
   }
 }
 
-export async function speakNative(text: string) {
+export async function speakNative(text: string, slow = false) {
   if (!isAndroid()) return false
-  try { return (await CallAssistantPlugin.speakText({ text })).spoken } catch { return false }
+  try { return (await CallAssistantPlugin.speakText({ text, slow })).spoken } catch { return false }
 }
 
 export async function openChatGPT() {
