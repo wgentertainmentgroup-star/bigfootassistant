@@ -38,9 +38,6 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build web app
-        env:
-          VITE_BIGFOOT_API_BASE: ${{ secrets.BIGFOOT_API_BASE }}
-          VITE_BIGFOOT_APP_TOKEN: ${{ secrets.BIGFOOT_APP_TOKEN }}
         run: npm run build
 
       - name: Sync Capacitor Android project
