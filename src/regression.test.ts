@@ -173,7 +173,8 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).not.toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
     expect(java).not.toContain('startActivityForResult(call, intent, "speechResult")')
     expect(nativeBridge).toContain('/Android/i.test(navigator.userAgent)')
-    expect(app).toContain('if (isAndroidDevice()) return requestVoiceInput()')
+    expect(app).toContain('if (isAndroidDevice()) return new Promise')
+    expect(app).toContain('void requestVoiceInput().then(finish)')
   })
 
   it('renders the assistant before microphone access and never auto-opens shortcut setup', () => {
@@ -192,13 +193,20 @@ describe('Android voice and setup safety contracts', () => {
 
   it('has a listening timeout and actionable error messages', () => {
     expect(java).toContain('postDelayed(voiceTimeout, 15000L)')
+    expect(app).toContain("}, 12000)")
+    expect(app).toContain("}, 14000)")
     expect(java).toContain('Microphone permission is required')
     expect(java).toContain('ERROR_RECOGNIZER_BUSY')
   })
 
-  it('keeps the animated Bubba HUD visible during voice input', () => {
+  it('keeps the animated Bubba HUD visible and provides a tested escape path', () => {
     expect(app).toContain('function VoiceHud')
     expect(app).toContain('The app will stay on this screen.')
+    expect(nativeBridge).toContain('cancelVoiceInput()')
+    expect(java).toContain('public void cancelVoiceInput(PluginCall call)')
+    expect(app).toContain('data-testid="voice-cancel"')
+    expect(androidE2E).toContain("[data-testid=voice-cancel]")
+    expect(androidE2E).toContain('Canceling voice must restore the app')
   })
 
   it('keeps the eleven-step setup and voice pass/fail check', () => {
@@ -251,15 +259,20 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('AlarmClock.ACTION_SET_ALARM')
     expect(java).toContain('MediaStore.ACTION_IMAGE_CAPTURE')
     expect(java).toContain('MediaStore.ACTION_VIDEO_CAPTURE')
-    expect(app).toContain('<b>Photo Camera</b>')
-    expect(app).toContain('<b>Video Camera</b>')
+    expect(app).toContain('data-testid="camera-button"')
+    expect(app).toContain('data-testid="video-button"')
+    expect(app).toContain('<b>CAMERA</b>')
+    expect(app).toContain('<b>VIDEO</b>')
+    expect(androidE2E).toContain('[data-testid=camera-button]')
+    expect(androidE2E).toContain('[data-testid=video-button]')
     expect(java).toContain('Settings.ACTION_SETTINGS')
     expect(manifest).toContain('com.android.alarm.permission.SET_ALARM')
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.10 E2E')
-    expect(app).toContain("const appVersion = 'v0.10 E2E GATED'")
+    expect(labels).toContain('Bigfoot v0.11 Hardened')
+    expect(app).toContain("const appVersion = 'v0.11 Z FOLD5 HARDENED'")
+    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0110'")
   })
 
   it('does not permit cleartext network traffic', () => {
