@@ -75,7 +75,9 @@ public class MainActivityRegressionTest {
             completeSetup(scenario);
             assertTrue(clickByText(scenario, "Practice talking"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('.assistant-page'))", "true"));
-            Thread.sleep(2200L);
+            assertTrue("The in-app voice screen must render", waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=voice-hud]'))", "true"));
+            assertTrue("The voice screen must have a working escape button", clickSelector(scenario, "[data-testid=voice-cancel]"));
+            assertTrue("Canceling voice must restore the app", waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true"));
             assertHealthyBigfootPage(scenario);
             assertEquals("The real first lesson must keep MainActivity resumed", Lifecycle.State.RESUMED, scenario.getState());
         }
@@ -87,7 +89,7 @@ public class MainActivityRegressionTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Photo Camera') && document.body.innerText.includes('Video Camera')", "true"));
+            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=camera-button]')) && Boolean(document.querySelector('[data-testid=video-button]')) && document.body.innerText.includes('CAMERA') && document.body.innerText.includes('VIDEO')", "true"));
 
             assertTrue(clickByText(scenario, "My List"));
             setFieldAndSubmit(scenario, "Example: Call the doctor", "End-to-end doctor task", ".add-form");
