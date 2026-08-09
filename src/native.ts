@@ -3,6 +3,7 @@ import type { Person } from './types'
 import { LocalNotifications } from '@capacitor/local-notifications'
 
 type CallAssistant = {
+  requestHomeShortcut(): Promise<{ requested: boolean }>
   requestCallerIdAccess(): Promise<{ granted: boolean }>
   getLastCaller(): Promise<{ number: string; name: string; time: number }>
   setKnownPeople(options: { people: Array<{ name: string; phone: string }> }): Promise<void>
@@ -11,6 +12,11 @@ type CallAssistant = {
 const CallAssistantPlugin = registerPlugin<CallAssistant>('CallAssistant')
 
 export const isAndroid = () => Capacitor.getPlatform() === 'android'
+
+export async function requestHomeShortcut() {
+  if (!isAndroid()) return false
+  try { return (await CallAssistantPlugin.requestHomeShortcut()).requested } catch { return false }
+}
 
 export async function requestCallerIdAccess() {
   if (!isAndroid()) return false
