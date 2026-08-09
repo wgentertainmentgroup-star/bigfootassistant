@@ -75,7 +75,17 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: cd android && ./gradlew --no-daemon :app:connectedDebugAndroidTest
+          script: |
+            adb logcat -c
+            cd android
+            set +e
+            ./gradlew --no-daemon :app:connectedDebugAndroidTest
+            test_status=$?
+            if [ "$test_status" -ne 0 ]; then
+              find app/build/outputs/androidTest-results/connected -type f -name '*.xml' -print -exec sed -n '1,240p' {} \;
+              adb logcat -d -v threadtime | grep -E 'FATAL EXCEPTION|AndroidRuntime|bigfootsoftware|MainActivityRegressionTest|SpeechRecognizer|Permission' | tail -500
+            fi
+            exit "$test_status"
 
   publish-apk:
     name: Build and publish permanent APK download
