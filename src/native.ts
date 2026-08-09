@@ -21,6 +21,7 @@ type CallAssistant = {
 const CallAssistantPlugin = registerPlugin<CallAssistant>('CallAssistant')
 
 export const isAndroid = () => Capacitor.getPlatform() === 'android'
+export const isAndroidDevice = () => isAndroid() || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent))
 
 export async function requestHomeShortcut() {
   if (!isAndroid()) return false
