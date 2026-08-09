@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.9 release gate: web tests, Android emulator lifecycle test, then APK packaging.
+# v0.10 release gate: web tests, fresh-install Android E2E journey, then APK packaging.
 
 on:
   push:
@@ -13,6 +13,19 @@ on:
       - src/**
       - package.json
       - package-lock.json
+      - capacitor.config.ts
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-test-apk-release.yml
+      - android/app/build.gradle
+      - android/app/src/main/**
+      - android/app/src/androidTest/**
+      - src/**
+      - package.json
+      - package-lock.json
+      - capacitor.config.ts
   workflow_dispatch:
 
 permissions:
@@ -20,7 +33,7 @@ permissions:
 
 jobs:
   verify-android-runtime:
-    name: Verify app and voice stay on-screen
+    name: Verify fresh install, setup, voice, and core journeys
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -54,7 +67,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run Android activity and voice lifecycle regressions
+      - name: Run full Android end-to-end regression suite
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -66,6 +79,7 @@ jobs:
 
   publish-apk:
     name: Build and publish permanent APK download
+    if: github.event_name != 'pull_request'
     needs: verify-android-runtime
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -104,14 +118,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.9-Easy-Setup.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.10-E2E-Gated.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.9-easy-setup \
-            Bigfoots-Day-v0.9-Easy-Setup.apk \
+          gh release create v0.10-e2e-gated \
+            Bigfoots-Day-v0.10-E2E-Gated.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.9 — Easy Setup Build" \
-            --notes "Release-gated Samsung Z Fold5 APK. Keeps the repaired in-app voice recognizer and emulator lifecycle gate, and adds an eleven-step senior-friendly setup, normal or slower Bubba speech, a confirmed trusted-helper call button, simplified home guidance, reminders, caller ID, lists, notes, phone tools, and ChatGPT handoff."
+            --title "Bigfoot's Day v0.10 — End-to-End Gated Build" \
+            --notes "Samsung Z Fold5-focused repair. Removes the automatic home-shortcut system handoff from setup, blocks Android WebView speech fallback, uses the standard headless Samsung recognition service, renders the assistant before requesting microphone access, and makes every native blank background dark. Release requires a fresh-install emulator journey through all eleven setup screens, the real first lesson, the real Android microphone permission prompt, core navigation, task/person/note creation, persistence after recreation, web regressions, and native lifecycle checks."
