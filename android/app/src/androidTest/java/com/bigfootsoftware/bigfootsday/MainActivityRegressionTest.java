@@ -130,8 +130,16 @@ public class MainActivityRegressionTest {
 
     private void resetToFreshInstall(ActivityScenario<MainActivity> scenario) throws Exception {
         assertTrue(waitForJavascript(scenario, "Boolean(document.body)", "true"));
-        evaluate(scenario, "localStorage.clear(); location.reload(); 'reset'");
-        assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Step 1 of 11')", "true"));
+        String reloadMarker = "e2e-" + System.nanoTime();
+        evaluate(
+            scenario,
+            "localStorage.clear();setTimeout(function(){location.replace(location.pathname+'?testReload=" + reloadMarker + "')},0);'reset'"
+        );
+        assertTrue(waitForJavascript(
+            scenario,
+            "location.search.includes('testReload=" + reloadMarker + "') && document.readyState==='complete' && document.body.innerText.includes('Step 1 of 11')",
+            "true"
+        ));
     }
 
     private void assertHealthyBigfootPage(ActivityScenario<MainActivity> scenario) throws Exception {
