@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { defaultState, loadState, saveState } from './storage'
-import { addVoiceStateListener, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
+import { addVoiceStateListener, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
@@ -130,6 +130,7 @@ function App() {
     if (action.type === 'alarm') opened = await setDeviceAlarm(action.hour, action.minute, action.label)
     if (action.type === 'map') opened = await openMapSearch(action.query)
     if (action.type === 'camera') opened = await openCamera()
+    if (action.type === 'video') opened = await openVideoCamera()
     if (action.type === 'settings') opened = await openDeviceSettings()
     if (action.type === 'chatgpt') await launchChatGPT()
     if (action.type === 'call') {
@@ -328,7 +329,8 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callH
       <button className="quick" onClick={() => ask('Set a timer for 10 minutes')}><span>◷</span><b>10-minute timer</b><small>Open Samsung Clock and start a timer.</small></button>
       <button className="quick" onClick={() => ask('What is on my shopping list?')}><span>🛒</span><b>Shopping list</b><small>Add an item by telling Bubba.</small></button>
       <button className="quick" onClick={() => ask('Open maps')}><span>⌖</span><b>Maps</b><small>Find a place or get directions.</small></button>
-      <button className="quick" onClick={() => ask('Open camera')}><span>▣</span><b>Camera</b><small>Open the phone camera.</small></button>
+      <button className="quick" onClick={() => ask('Open camera')}><span>▣</span><b>Photo Camera</b><small>Open Samsung Camera for a picture.</small></button>
+      <button className="quick" onClick={() => ask('Open video camera')}><span>▶</span><b>Video Camera</b><small>Open Samsung Camera ready for video.</small></button>
       <button className="quick" onClick={() => go('people')}><span>☎</span><b>Call someone</b><small>{lastCaller || `${state.people.filter(p => !p.deleted).length} people saved`}</small></button>
       <button className="quick chatgpt-quick" onClick={() => void openChatGPT()}><span>✦</span><b>More Help</b><small>Get help with a detailed question.</small></button>
     </div>
@@ -516,6 +518,7 @@ export type AssistantAction =
   | { type: 'alarm'; hour: number; minute: number; label: string }
   | { type: 'map'; query: string }
   | { type: 'camera' }
+  | { type: 'video' }
   | { type: 'settings' }
   | { type: 'chatgpt' }
   | { type: 'call'; phone: string }
@@ -566,7 +569,8 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
     return { reply: query ? `I’m opening Maps for ${query}.` : 'I’m opening Maps. Tell Maps where you want to go.', action: { type: 'map', query } }
   }
 
-  if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?camera[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera.', action: { type: 'camera' } }
+  if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?(?:video camera|camera video|video recorder)[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera in video mode.', action: { type: 'video' } }
+  if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?(?:photo )?camera[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera for a picture.', action: { type: 'camera' } }
   if (/^(?:please\s+)?open\s+(?:phone\s+|device\s+)?settings[.!?]*$/i.test(text)) return { reply: 'I’m opening your phone settings.', action: { type: 'settings' } }
   if (/^(?:please\s+)?(?:open|continue (?:in|with)|use)\s+(?:the\s+)?chatgpt[.!?]*$/i.test(text)) return { reply: 'I’m opening ChatGPT for more detailed help.', action: { type: 'chatgpt' } }
 
