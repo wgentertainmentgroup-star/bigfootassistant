@@ -76,17 +76,11 @@ public class MainActivityRegressionTest {
                     "true"
                 )
             );
-            boolean voicePanelVisible = "true".equals(evaluate(scenario, "Boolean(document.querySelector('[data-testid=voice-hud]'))"));
-            if (voicePanelVisible) {
-                assertTrue(
-                    "The permission return must never produce a full-screen black or white voice layer",
-                    waitForJavascript(scenario, "document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().top > 0 && document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight", "true")
-                );
-                boolean stopped = clickSelector(scenario, "[data-testid=voice-cancel]");
-                assertTrue(
-                    "The permission-return voice panel must stop or close itself",
-                    stopped || waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true")
-                );
+            assertTrue("Android must never render the WebView voice overlay", waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true"));
+            UiObject2 nativeStop = device.findObject(By.text("STOP AND RETURN"));
+            if (nativeStop != null) {
+                nativeStop.click();
+                device.waitForIdle();
             }
             assertTrue(
                 "If the emulator has no microphone input, Bigfoot must return to Lesson 1 instead of getting stuck",
@@ -118,12 +112,14 @@ public class MainActivityRegressionTest {
             completeSetup(scenario);
             assertTrue(clickByText(scenario, "Practice talking"));
             assertTrue("Voice must keep Lesson 1 visible and must not navigate to the dark assistant page", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba') && !document.querySelector('.assistant-page')", "true"));
-            boolean voicePanelVisible = "true".equals(evaluate(scenario, "Boolean(document.querySelector('[data-testid=voice-hud]'))"));
-            if (voicePanelVisible) {
-                assertTrue("Voice must be a panel, not a black full-screen cover", waitForJavascript(scenario, "document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().top > 0 && document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight", "true"));
-                assertTrue("The voice panel must have a working escape button", clickSelector(scenario, "[data-testid=voice-cancel]"));
+            assertTrue("Android voice must never create a WebView cover", waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true"));
+            UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+            UiObject2 nativeStop = device.findObject(By.text("STOP AND RETURN"));
+            if (nativeStop != null) {
+                nativeStop.click();
+                device.waitForIdle();
             }
-            assertTrue("Canceling voice must restore the app", waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true"));
+            assertTrue("Stopping voice must restore the app", waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true"));
             assertTrue("A failed voice attempt must return to the lesson", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
             assertHealthyBigfootPage(scenario);
             assertEquals("The real first lesson must keep MainActivity resumed", Lifecycle.State.RESUMED, scenario.getState());
@@ -239,16 +235,21 @@ public class MainActivityRegressionTest {
 
     private void resetToFreshInstall(ActivityScenario<MainActivity> scenario) throws Exception {
         assertTrue(waitForJavascript(scenario, "Boolean(document.body)", "true"));
-        String reloadMarker = "e2e-" + System.nanoTime();
-        evaluate(
-            scenario,
-            "localStorage.clear();setTimeout(function(){location.replace(location.pathname+'?testReload=" + reloadMarker + "')},0);'reset'"
-        );
-        assertTrue(waitForJavascript(
-            scenario,
-            "location.search.includes('testReload=" + reloadMarker + "') && document.readyState==='complete' && document.body.innerText.includes('Step 1 of 11')",
-            "true"
-        ));
+        for (int resetAttempt = 0; resetAttempt < 2; resetAttempt++) {
+            String reloadMarker = "e2e-" + System.nanoTime();
+            evaluate(
+                scenario,
+                "localStorage.clear();setTimeout(function(){location.replace(location.pathname+'?testReload=" + reloadMarker + "')},0);'reset'"
+            );
+            if (waitForJavascript(
+                scenario,
+                "location.search.includes('testReload=" + reloadMarker + "') && document.readyState==='complete' && document.body.innerText.includes('Step 1 of 11')",
+                "true"
+            )) return;
+            scenario.onActivity(activity -> activity.getBridge().getWebView().reload());
+            Thread.sleep(800L);
+        }
+        throw new AssertionError("Fresh-install setup did not recover after two WebView reload attempts");
     }
 
     private void assertHealthyBigfootPage(ActivityScenario<MainActivity> scenario) throws Exception {
