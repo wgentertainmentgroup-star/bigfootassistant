@@ -192,21 +192,22 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('has a listening timeout and actionable error messages', () => {
-    expect(java).toContain('postDelayed(voiceTimeout, 15000L)')
-    expect(app).toContain("}, 12000)")
-    expect(app).toContain("}, 14000)")
+    expect(java).toContain('postDelayed(voiceTimeout, 10000L)')
+    expect(app).toContain("}, 9000)")
+    expect(app).toContain("}, 11000)")
     expect(java).toContain('Microphone permission is required')
     expect(java).toContain('ERROR_RECOGNIZER_BUSY')
   })
 
-  it('keeps the animated Bubba HUD visible and provides a tested escape path', () => {
+  it('uses a nonblocking Bubba voice panel and provides a tested escape path', () => {
     expect(app).toContain('function VoiceHud')
-    expect(app).toContain('The app will stay on this screen.')
+    expect(app).toContain('The app remains visible. Listening stops automatically after 9 seconds.')
     expect(nativeBridge).toContain('cancelVoiceInput()')
     expect(java).toContain('public void cancelVoiceInput(PluginCall call)')
     expect(app).toContain('data-testid="voice-cancel"')
     expect(androidE2E).toContain("[data-testid=voice-cancel]")
     expect(androidE2E).toContain('Canceling voice must restore the app')
+    expect(androidE2E).toContain('Voice must be a panel, not a black full-screen cover')
   })
 
   it('keeps the eleven-step setup and voice pass/fail check', () => {
@@ -215,8 +216,26 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain("status: 'idle' | 'listening' | 'passed' | 'failed'")
   })
 
-  it('does not graduate the voice lesson when listening fails', () => {
-    expect(app).toContain('if (await talk()) advanceLearning()')
+  it('keeps a failed voice lesson visible while providing a clear skip path', () => {
+    expect(app).toContain('const worked = await talk(); go(\'home\'); if (worked) advanceLearning()')
+    expect(app).toContain('data-testid="lesson-skip"')
+    expect(app).toContain('Skip this lesson →')
+  })
+
+  it('provides five lessons and returns the customer home after practice actions', () => {
+    expect(app).toContain('Lesson 1: Talk to Bubba')
+    expect(app).toContain('Lesson 2: Use your list')
+    expect(app).toContain('Lesson 3: Save a note')
+    expect(app).toContain('Lesson 4: Find Camera & Video')
+    expect(app).toContain('Lesson 5: Get detailed help')
+    expect(app).toContain("go('home'); advanceLearning()")
+    expect(app).toContain('Lesson {state.preferences.learningStep + 1} of 5')
+    expect(androidE2E).toContain('newCustomerCanCompleteOrSkipEveryLesson')
+    expect(androidE2E).toContain('completeSetupWithCustomerProfile')
+    expect(androidE2E).toContain('The setup profile must appear on Today')
+    expect(androidE2E).toContain('Lesson 2 must return home and advance')
+    expect(androidE2E).toContain('Lesson 3 must return home and advance')
+    expect(androidE2E).toContain('[data-testid=lessons-complete]')
   })
 
   it('uses a calm UK speech profile with a US fallback', () => {
@@ -246,7 +265,7 @@ describe('Android voice and setup safety contracts', () => {
 
   it('runs the real fresh-install setup and first-lesson buttons in Android', () => {
     expect(androidE2E).toContain('freshInstallCompletesEverySetupScreenWithoutLeavingTheApp')
-    expect(androidE2E).toContain('actualFirstLessonButtonStartsVoiceWithoutAWhiteScreen')
+    expect(androidE2E).toContain('actualFirstLessonButtonStartsVoiceWithoutCoveringTheApp')
     expect(androidE2E).toContain('firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt')
     expect(androidE2E).toContain('coreUserJourneyAddsAndPersistsTasksPeopleAndNotes')
     expect(androidE2E).toContain('document.body.innerText.includes(\'Lesson 1: Talk to Bubba\')')
@@ -270,9 +289,9 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.11 Hardened')
-    expect(app).toContain("const appVersion = 'v0.11 Z FOLD5 HARDENED'")
-    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0110'")
+    expect(labels).toContain('Bigfoot v0.12 Customer')
+    expect(app).toContain("const appVersion = 'v0.12 CUSTOMER RECOVERY'")
+    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0120'")
   })
 
   it('does not permit cleartext network traffic', () => {
