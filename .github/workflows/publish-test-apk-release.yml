@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.11 release gate: web tests, fresh-install Android E2E journey, then APK packaging.
+# v0.12 release gate: web tests, complete first-customer Android journey, then APK packaging.
 
 on:
   push:
@@ -118,14 +118,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.11-ZFold5-Hardened.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.12-Customer-Recovery.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.11-zfold5-hardened \
-            Bigfoots-Day-v0.11-ZFold5-Hardened.apk \
+          gh release create v0.12-customer-recovery \
+            Bigfoots-Day-v0.12-Customer-Recovery.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.11 — Z Fold5 Hardened Build" \
-            --notes "Samsung Z Fold5 recovery release. It installs as a separate app and forces the eleven-step setup to begin at Step 1. The Today screen has large dedicated Camera and Video buttons. Voice stays inside Bigfoot's Day, includes a large Stop listening button, and has independent native and interface watchdogs. Release requires the complete fresh-install setup, the real first lesson and Android microphone permission prompt, tested voice cancel recovery, visible Camera/Video controls, core navigation, task/person/note creation, persistence after recreation, web regressions, and native lifecycle checks."
+            --title "Bigfoot's Day v0.12 — Customer Recovery Build" \
+            --notes "First-customer recovery release for Samsung Z Fold5. Voice is now a compact panel that leaves the app visible instead of covering it with a white or black screen. All five lessons have a clear action and Skip path; list and note practices return to Today and show the next lesson. This installs separately and forces setup to Step 1. Release requires the complete eleven-step setup, real Android microphone permission, voice panel visibility and cancel recovery, every lesson path, Camera/Video controls, core navigation, task/person/note creation, persistence after recreation, web regressions, and native lifecycle checks."
