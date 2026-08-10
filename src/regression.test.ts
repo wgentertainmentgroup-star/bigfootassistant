@@ -167,6 +167,7 @@ describe('Android voice and setup safety contracts', () => {
   const workflow = readFileSync('.github/workflows/publish-test-apk-release.yml', 'utf8')
   const capacitor = readFileSync('capacitor.config.ts', 'utf8')
   const voice = readFileSync('src/voice.ts', 'utf8')
+  const styles = readFileSync('src/styles.css', 'utf8')
 
   it('uses in-app SpeechRecognizer instead of the external white-screen activity', () => {
     expect(java).toContain('SpeechRecognizer.createSpeechRecognizer')
@@ -209,6 +210,9 @@ describe('Android voice and setup safety contracts', () => {
     expect(androidE2E).toContain("[data-testid=voice-cancel]")
     expect(androidE2E).toContain('Canceling voice must restore the app')
     expect(androidE2E).toContain('Voice must be a panel, not a black full-screen cover')
+    expect(androidE2E).toContain('boolean voicePanelVisible')
+    expect(styles).toContain('.voice-hud{position:fixed;left:16px;right:16px;bottom:18px')
+    expect(styles).not.toContain('.voice-hud{position:fixed;inset:0')
   })
 
   it('keeps the eleven-step setup and voice pass/fail check', () => {
@@ -275,6 +279,7 @@ describe('Android voice and setup safety contracts', () => {
     expect(androidE2E).toContain('actualFirstLessonButtonStartsVoiceWithoutCoveringTheApp')
     expect(androidE2E).toContain('firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt')
     expect(androidE2E).toContain('coreUserJourneyAddsAndPersistsTasksPeopleAndNotes')
+    expect(androidE2E).toContain('location.reload()')
     expect(androidE2E).toContain('document.body.innerText.includes(\'Lesson 1: Talk to Bubba\')')
     expect(androidE2E).toContain('Bigfoot rendered a blank or white page')
     expect(workflow).toContain(':app:connectedDebugAndroidTest')
