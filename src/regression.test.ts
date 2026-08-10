@@ -166,6 +166,7 @@ describe('Android voice and setup safety contracts', () => {
   const androidE2E = readFileSync('android/app/src/androidTest/java/com/bigfootsoftware/bigfootsday/MainActivityRegressionTest.java', 'utf8')
   const workflow = readFileSync('.github/workflows/publish-test-apk-release.yml', 'utf8')
   const capacitor = readFileSync('capacitor.config.ts', 'utf8')
+  const voice = readFileSync('src/voice.ts', 'utf8')
 
   it('uses in-app SpeechRecognizer instead of the external white-screen activity', () => {
     expect(java).toContain('SpeechRecognizer.createSpeechRecognizer')
@@ -245,6 +246,12 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('slow ? 0.78f : 0.92f')
   })
 
+  it('never lets a stalled Android text-to-speech service block a lesson', () => {
+    expect(voice).toContain('Promise.race([')
+    expect(voice).toContain('speakNative(clean, slow)')
+    expect(voice).toContain('window.setTimeout(() => resolve(false), 3500)')
+  })
+
   it('requires confirmation before placing calls and supports one trusted helper', () => {
     expect(app).toContain('window.confirm(`Call ${name} at ${phone}?`)')
     expect(app).toContain('Call My Helper')
@@ -271,6 +278,8 @@ describe('Android voice and setup safety contracts', () => {
     expect(androidE2E).toContain('document.body.innerText.includes(\'Lesson 1: Talk to Bubba\')')
     expect(androidE2E).toContain('Bigfoot rendered a blank or white page')
     expect(workflow).toContain(':app:connectedDebugAndroidTest')
+    expect(workflow).toContain('Retry complete customer journey on a fresh emulator')
+    expect(workflow).toContain('timeout 8s adb logcat')
   })
 
   it('provides native assistant tools without cloud setup', () => {
