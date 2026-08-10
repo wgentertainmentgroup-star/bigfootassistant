@@ -8,8 +8,8 @@ import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v0110'
-const appVersion = 'v0.11 Z FOLD5 HARDENED'
+const setupMarker = 'bigfoots-day-easy-setup-v0120'
+const appVersion = 'v0.12 CUSTOMER RECOVERY'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -36,7 +36,7 @@ async function captureVoiceOnce(): Promise<{ text: string; error: string }> {
     const watchdog = window.setTimeout(() => {
       void cancelVoiceInput()
       finish({ text: '', error: 'Voice listening took too long and was safely stopped. Tap the microphone to try again.' })
-    }, 12000)
+    }, 9000)
     void requestVoiceInput().then(finish)
   })
   return new Promise(resolve => {
@@ -82,7 +82,7 @@ function App() {
       setVoiceUi({ state: 'idle' })
       setListening(false)
       notify('Voice was safely stopped. The app is ready—tap the microphone to try again.')
-    }, 14000)
+    }, 11000)
     return () => clearTimeout(watchdog)
   }, [voiceUi.state])
 
@@ -227,7 +227,7 @@ function App() {
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} openChatGPT={launchChatGPT} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(4, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} openChatGPT={launchChatGPT} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(5, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
         {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
@@ -246,7 +246,7 @@ function App() {
 function VoiceHud({ state, onCancel }: { state: NativeVoiceState; onCancel: () => Promise<void> }) {
   if (state.state === 'idle' || state.state === 'complete') return null
   const message = state.message || (state.state === 'hearing' ? 'I hear you…' : state.state === 'processing' ? 'Working on that…' : 'Listening…')
-  return <div className={`voice-hud ${state.state}`} data-testid="voice-hud" role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>Speak normally. The app will stay on this screen.</small><button className="voice-cancel" data-testid="voice-cancel" onClick={() => void onCancel()}>Stop listening</button></div>
+  return <div className={`voice-hud ${state.state}`} data-testid="voice-hud" role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>The app remains visible. Listening stops automatically after 9 seconds.</small><button className="voice-cancel" data-testid="voice-cancel" onClick={() => void onCancel()}>Stop listening</button></div>
 }
 
 function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { state: AppState; voiceUi: NativeVoiceState; onCancelVoice: () => Promise<void>; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
@@ -308,7 +308,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.11</span></header>
+    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.12</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -343,21 +343,22 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => void; talk: () => Promise<boolean>; openChatGPT: () => Promise<void>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; openChatGPT: () => Promise<void>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
-    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap below, say “What can you do?”, then listen to Bubba’s answer.', action: '🎙 Practice talking', run: async () => { if (await talk()) advanceLearning() } },
-    { title: 'Lesson 2: Use your list', copy: 'See how Bubba adds something to your list for you.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); advanceLearning() } },
-    { title: 'Lesson 3: Save a note', copy: 'Bubba can remember a short note so you do not have to.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); advanceLearning() } },
-    { title: 'Lesson 4: Get detailed help', copy: 'For detailed questions, Bigfoot’s Day opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
-  ][Math.min(3, state.preferences.learningStep)]
+    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” If voice is not ready, tap Stop listening, then use Skip this lesson.', action: '🎙 Practice talking', run: async () => { const worked = await talk(); go('home'); if (worked) advanceLearning() } },
+    { title: 'Lesson 2: Use your list', copy: 'Bubba will add “drink a glass of water” to your list, then bring you back here.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); go('home'); advanceLearning() } },
+    { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note, then bring you back here.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); go('home'); advanceLearning() } },
+    { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
+    { title: 'Lesson 5: Get detailed help', copy: 'For detailed questions, Bigfoot’s Day opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
+  ][Math.min(4, state.preferences.learningStep)]
   return <div className="page home-page">
     <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div><small className="talk-example">Try saying: “What do I need to do today?”</small></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
     <section className="media-launcher" aria-label="Camera and video">
       <button className="media-button camera" data-testid="camera-button" onClick={() => ask('Open camera')}><span>▣</span><div><b>CAMERA</b><small>Take a photo</small></div></button>
       <button className="media-button video" data-testid="video-button" onClick={() => ask('Open video camera')}><span>▶</span><div><b>VIDEO</b><small>Record a video</small></div></button>
     </section>
-    {state.preferences.learningStep < 4 ? <section className="panel learning-card"><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 4</small></div><button onClick={() => void lesson.run()}>{lesson.action}</button></section> : <section className="panel learning-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
+    {state.preferences.learningStep < 5 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 5 · You can skip any lesson and return later.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
