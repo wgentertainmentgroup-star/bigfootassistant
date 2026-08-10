@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
 import { defaultState, loadState, saveState } from './storage'
 import { addVoiceStateListener, cancelVoiceInput, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
@@ -8,8 +7,8 @@ import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v0120'
-const appVersion = 'v0.12 CUSTOMER RECOVERY'
+const setupMarker = 'bigfoots-day-easy-setup-v0130'
+const appVersion = 'v0.13 Z FOLD VOICE FIX'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -63,6 +62,7 @@ function App() {
   const [voiceUi, setVoiceUi] = useState<NativeVoiceState>({ state: 'idle' })
   const stateRef = useRef(state)
   const realtimeRef = useRef<RealtimeController | null>(null)
+  const voiceRequestRef = useRef(false)
   stateRef.current = state
 
   useEffect(() => saveState(state), [state])
@@ -165,16 +165,26 @@ function App() {
   }
 
   async function startListening() {
+    if (voiceRequestRef.current) {
+      await stopListening()
+      return false
+    }
+    voiceRequestRef.current = true
     setListening(true)
-    const result = await captureVoiceOnce()
-    setListening(false)
-    if (result.text) { await askAssistant(result.text); return true }
-    notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
-    return false
+    try {
+      const result = await captureVoiceOnce()
+      if (result.text) { await askAssistant(result.text); return true }
+      notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
+      return false
+    } finally {
+      voiceRequestRef.current = false
+      setListening(false)
+    }
   }
 
   async function stopListening() {
     await cancelVoiceInput()
+    voiceRequestRef.current = false
     setVoiceUi({ state: 'idle' })
     setListening(false)
     notify('Voice listening stopped. You can try again whenever you are ready.')
@@ -185,11 +195,9 @@ function App() {
       realtimeRef.current.stop(); realtimeRef.current = null; setLiveVoice(false); notify('Live conversation ended.'); return true
     }
     if (!state.preferences.apiBase.trim()) {
-      flushSync(() => setSection('assistant'))
       return startListening()
     }
     try {
-      flushSync(() => setSection('assistant'))
       notify('Starting live Bubba…')
       realtimeRef.current = await startRealtimeVoice({
         apiBase: state.preferences.apiBase,
@@ -197,6 +205,7 @@ function App() {
         onStatus: () => { setLiveVoice(true); notify('Bubba is listening. Just speak naturally.') },
         onAssistantText: text => setState(s => ({ ...s, chat: [...s.chat, { role: 'assistant', text }] })),
       })
+      setSection('assistant')
       setLiveVoice(true)
       return true
     } catch { setLiveVoice(false); notify('Live Bubba could not connect. Check Settings and microphone permission.'); return false }
@@ -246,7 +255,7 @@ function App() {
 function VoiceHud({ state, onCancel }: { state: NativeVoiceState; onCancel: () => Promise<void> }) {
   if (state.state === 'idle' || state.state === 'complete') return null
   const message = state.message || (state.state === 'hearing' ? 'I hear you…' : state.state === 'processing' ? 'Working on that…' : 'Listening…')
-  return <div className={`voice-hud ${state.state}`} data-testid="voice-hud" role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>The app remains visible. Listening stops automatically after 9 seconds.</small><button className="voice-cancel" data-testid="voice-cancel" onClick={() => void onCancel()}>Stop listening</button></div>
+  return <div className={`voice-hud ${state.state}`} data-testid="voice-hud" role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>This lesson stays on screen. Listening stops automatically after 9 seconds.</small><button className="voice-cancel" data-testid="voice-cancel" onClick={() => void onCancel()}>Stop listening</button></div>
 }
 
 function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { state: AppState; voiceUi: NativeVoiceState; onCancelVoice: () => Promise<void>; onChange: (s: AppState | ((s: AppState) => AppState)) => void; onFinish: () => void }) {
@@ -308,7 +317,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.12</span></header>
+    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.13</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -346,7 +355,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
 function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; openChatGPT: () => Promise<void>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
-    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” If voice is not ready, tap Stop listening, then use Skip this lesson.', action: '🎙 Practice talking', run: async () => { const worked = await talk(); go('home'); if (worked) advanceLearning() } },
+    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” This lesson will stay on screen. If voice is not ready, tap Stop listening or Skip this lesson.', action: '🎙 Practice talking', run: async () => { const worked = await talk(); if (worked) advanceLearning() } },
     { title: 'Lesson 2: Use your list', copy: 'Bubba will add “drink a glass of water” to your list, then bring you back here.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); go('home'); advanceLearning() } },
     { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note, then bring you back here.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); go('home'); advanceLearning() } },
     { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
