@@ -253,6 +253,9 @@ function App() {
 }
 
 function VoiceHud({ state, onCancel }: { state: NativeVoiceState; onCancel: () => Promise<void> }) {
+  // Android has a native safety panel above the WebView. Rendering a second
+  // WebView overlay can expand to the full Fold screen on some Samsung layouts.
+  if (isAndroidDevice()) return null
   if (state.state === 'idle' || state.state === 'complete') return null
   const message = state.message || (state.state === 'hearing' ? 'I hear you…' : state.state === 'processing' ? 'Working on that…' : 'Listening…')
   return <div className={`voice-hud ${state.state}`} data-testid="voice-hud" role="status" aria-live="polite"><div className="voice-hud-ring"><span>✦</span><i /><i /><i /></div><b>BUBBA</b><strong>{message}</strong><div className="voice-meter" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 7 + (state.level || 2) * 5) % 31)}px` }} />)}</div><small>This lesson stays on screen. Listening stops automatically after 9 seconds.</small><button className="voice-cancel" data-testid="voice-cancel" onClick={() => void onCancel()}>Stop listening</button></div>
