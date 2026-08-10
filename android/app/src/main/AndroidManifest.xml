@@ -3,6 +3,11 @@
 
     <queries>
         <package android:name="com.openai.chatgpt" />
+        <!-- Android 11+ requires the recognition service itself to be visible to
+             SpeechRecognizer. Querying only the speech Activity is not enough. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
