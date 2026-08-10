@@ -169,32 +169,39 @@ describe('Android voice and setup safety contracts', () => {
   const voice = readFileSync('src/voice.ts', 'utf8')
   const styles = readFileSync('src/styles.css', 'utf8')
 
-  it('uses in-app SpeechRecognizer instead of the external white-screen activity', () => {
+  it('uses on-device-first SpeechRecognizer without launching an external speech activity', () => {
+    expect(java).toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
     expect(java).toContain('SpeechRecognizer.createSpeechRecognizer')
-    expect(java).toContain('SpeechRecognizer.createSpeechRecognizer(getActivity())')
-    expect(java).not.toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
+    expect(java).toContain('getContext().getApplicationContext()')
+    expect(java).not.toContain('SpeechRecognizer.createSpeechRecognizer(getActivity())')
     expect(java).not.toContain('startActivityForResult(call, intent, "speechResult")')
+    expect(manifest).toContain('android.speech.RecognitionService')
     expect(nativeBridge).toContain('/Android/i.test(navigator.userAgent)')
     expect(app).toContain('if (isAndroidDevice()) return new Promise')
     expect(app).toContain('void requestVoiceInput().then(finish)')
   })
 
-  it('renders the assistant before microphone access and never auto-opens shortcut setup', () => {
-    expect(app).toContain("flushSync(() => setSection('assistant'))")
+  it('keeps Lesson 1 visible before and during microphone access', () => {
+    expect(app).not.toContain("flushSync(() => setSection('assistant'))")
+    expect(app).toContain("if (!state.preferences.apiBase.trim()) {\n      return startListening()")
+    expect(app).toContain('This lesson will stay on screen')
     expect(app).not.toContain("localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut()")
     expect(app).toContain('Add Icon to Home')
   })
 
-  it('uses a dark native fallback and automatically recovers a genuinely empty WebView', () => {
-    expect(activity).toContain('setBackgroundColor(Color.rgb(3, 11, 17))')
+  it('uses a visible teal native fallback and can forcibly recover the WebView', () => {
+    expect(activity).toContain('setBackgroundColor(Color.rgb(8, 54, 68))')
     expect(activity).toContain("document.querySelector('.app,.setup-shell')")
     expect(activity).toContain('webView.reload()')
-    expect(capacitor).toContain("backgroundColor: '#030b11'")
+    expect(activity).toContain('STOP AND RETURN')
+    expect(activity).toContain('recoverAfterVoice()')
+    expect(activity).toContain('public void onBackPressed()')
+    expect(capacitor).toContain("backgroundColor: '#083644'")
     expect(capacitor).toContain('allowMixedContent: false')
   })
 
   it('has a listening timeout and actionable error messages', () => {
-    expect(java).toContain('postDelayed(voiceTimeout, 10000L)')
+    expect(java).toContain('postDelayed(voiceTimeout, 9000L)')
     expect(app).toContain("}, 9000)")
     expect(app).toContain("}, 11000)")
     expect(java).toContain('Microphone permission is required')
@@ -203,9 +210,11 @@ describe('Android voice and setup safety contracts', () => {
 
   it('uses a nonblocking Bubba voice panel and provides a tested escape path', () => {
     expect(app).toContain('function VoiceHud')
-    expect(app).toContain('The app remains visible. Listening stops automatically after 9 seconds.')
+    expect(app).toContain('This lesson stays on screen. Listening stops automatically after 9 seconds.')
     expect(nativeBridge).toContain('cancelVoiceInput()')
     expect(java).toContain('public void cancelVoiceInput(PluginCall call)')
+    expect(java).toContain('showVoiceSafetyPanel')
+    expect(java).toContain('handleOnPause()')
     expect(app).toContain('data-testid="voice-cancel"')
     expect(androidE2E).toContain("[data-testid=voice-cancel]")
     expect(androidE2E).toContain('Canceling voice must restore the app')
@@ -222,7 +231,7 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('keeps a failed voice lesson visible while providing a clear skip path', () => {
-    expect(app).toContain('const worked = await talk(); go(\'home\'); if (worked) advanceLearning()')
+    expect(app).toContain('const worked = await talk(); if (worked) advanceLearning()')
     expect(app).toContain('data-testid="lesson-skip"')
     expect(app).toContain('Skip this lesson →')
   })
@@ -278,10 +287,11 @@ describe('Android voice and setup safety contracts', () => {
     expect(androidE2E).toContain('freshInstallCompletesEverySetupScreenWithoutLeavingTheApp')
     expect(androidE2E).toContain('actualFirstLessonButtonStartsVoiceWithoutCoveringTheApp')
     expect(androidE2E).toContain('firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt')
+    expect(androidE2E).toContain('nativeStopAndReturnRecoversEvenIfTheWebLayerFails')
     expect(androidE2E).toContain('coreUserJourneyAddsAndPersistsTasksPeopleAndNotes')
     expect(androidE2E).toContain('location.reload()')
     expect(androidE2E).toContain('document.body.innerText.includes(\'Lesson 1: Talk to Bubba\')')
-    expect(androidE2E).toContain('Bigfoot rendered a blank or white page')
+    expect(androidE2E).toContain('Bigfoot rendered a blank, white, or black page')
     expect(workflow).toContain(':app:connectedDebugAndroidTest')
     expect(workflow).toContain('Retry complete customer journey on a fresh emulator')
     expect(workflow).toContain('timeout 8s adb logcat')
@@ -303,9 +313,9 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.12 Customer')
-    expect(app).toContain("const appVersion = 'v0.12 CUSTOMER RECOVERY'")
-    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0120'")
+    expect(labels).toContain('Bigfoot v0.13 Voice Fix')
+    expect(app).toContain("const appVersion = 'v0.13 Z FOLD VOICE FIX'")
+    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0130'")
   })
 
   it('does not permit cleartext network traffic', () => {
