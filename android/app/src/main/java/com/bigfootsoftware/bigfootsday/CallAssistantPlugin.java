@@ -47,9 +47,12 @@ import org.json.JSONObject;
 public class CallAssistantPlugin extends Plugin {
     private TextToSpeech textToSpeech;
     private SpeechRecognizer speechRecognizer;
+    private RecognitionListener recognitionListener;
     private PluginCall activeVoiceCall;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private Runnable voiceTimeout;
+    private boolean usingOnDeviceRecognizer;
+    private boolean fallbackAttempted;
 
     @PluginMethod
     public void startVoiceInput(PluginCall call) {
@@ -80,22 +83,26 @@ public class CallAssistantPlugin extends Plugin {
     }
 
     private void startInAppSpeechRecognition(PluginCall call) {
-        if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
+        boolean onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
+        if (!onDeviceAvailable && !SpeechRecognizer.isRecognitionAvailable(getContext())) {
             resolveVoice(call, "", "Samsung could not find an enabled speech recognition service. Enable the Google app or Samsung voice input, then try again.");
             return;
         }
         getActivity().runOnUiThread(() -> {
             finishVoice("", "A new voice request started.");
             activeVoiceCall = call;
+            fallbackAttempted = false;
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).showVoiceSafetyPanel(() -> finishVoice("", "Voice listening was stopped. Your lesson is ready."));
+            }
             try {
-                // Use the standard headless recognition service on Samsung. The
-                // on-device factory is not consistent across One UI providers.
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getActivity());
+                createSpeechRecognizer(onDeviceAvailable);
             } catch (Exception recognitionError) {
                 finishVoice("", "Samsung voice input could not start. Open phone Settings, General management, Keyboard list and default, then turn on Google voice typing.");
                 return;
             }
-            speechRecognizer.setRecognitionListener(new RecognitionListener() {
+            recognitionListener = new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) { sendVoiceState("listening", "Listening…"); }
                 @Override public void onBeginningOfSpeech() { sendVoiceState("hearing", "I hear you…"); }
                 @Override public void onRmsChanged(float rmsdB) {
@@ -106,32 +113,94 @@ public class CallAssistantPlugin extends Plugin {
                 }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEndOfSpeech() { sendVoiceState("processing", "Working on that…"); }
-                @Override public void onError(int error) { finishVoice("", speechError(error)); }
+                @Override public void onError(int error) {
+                    if (shouldUseNetworkFallback(error)) {
+                        fallbackAttempted = true;
+                        restartWithStandardRecognizer();
+                        return;
+                    }
+                    finishVoice("", speechError(error));
+                }
                 @Override public void onResults(Bundle results) {
                     ArrayList<String> choices = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     finishVoice(choices != null && !choices.isEmpty() ? choices.get(0) : "", choices == null || choices.isEmpty() ? "Nothing was heard. Please try again." : "");
                 }
                 @Override public void onPartialResults(Bundle partialResults) {}
                 @Override public void onEvent(int eventType, Bundle params) {}
-            });
+            };
+            speechRecognizer.setRecognitionListener(recognitionListener);
 
-            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag());
-            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-            intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
-            voiceTimeout = () -> finishVoice("", "Listening timed out. Tap the microphone and try again.");
-            voiceHandler.postDelayed(voiceTimeout, 10000L);
-            sendVoiceState("starting", "Starting microphone…");
-            try {
-                speechRecognizer.startListening(intent);
-            } catch (Exception error) {
-                finishVoice("", "The microphone could not start. Close other apps using the microphone and try again.");
-            }
+            startRecognizer(buildRecognizerIntent(usingOnDeviceRecognizer));
         });
+    }
+
+    private void createSpeechRecognizer(boolean preferOnDevice) {
+        Context appContext = getContext().getApplicationContext();
+        usingOnDeviceRecognizer = false;
+        if (preferOnDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            && SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)) {
+            try {
+                speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext);
+                usingOnDeviceRecognizer = true;
+                return;
+            } catch (UnsupportedOperationException ignored) {
+                // Continue to Android's default headless recognition service.
+            }
+        }
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext);
+    }
+
+    private Intent buildRecognizerIntent(boolean offline) {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag());
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, offline);
+        intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
+        return intent;
+    }
+
+    private void startRecognizer(Intent intent) {
+        if (voiceTimeout != null) voiceHandler.removeCallbacks(voiceTimeout);
+        voiceTimeout = () -> {
+            finishVoice("", "Listening timed out. Your lesson was restored; tap the microphone to try again.");
+            if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).recoverAfterVoice();
+        };
+        voiceHandler.postDelayed(voiceTimeout, 9000L);
+        sendVoiceState("starting", usingOnDeviceRecognizer ? "Starting private on-device microphone…" : "Starting microphone…");
+        try {
+            speechRecognizer.startListening(intent);
+        } catch (Exception error) {
+            finishVoice("", "The microphone could not start. Close other apps using the microphone and try again.");
+        }
+    }
+
+    private boolean shouldUseNetworkFallback(int error) {
+        if (!usingOnDeviceRecognizer || fallbackAttempted) return false;
+        return error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+            || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
+            || error == SpeechRecognizer.ERROR_SERVER
+            || error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED;
+    }
+
+    private void restartWithStandardRecognizer() {
+        SpeechRecognizer previous = speechRecognizer;
+        speechRecognizer = null;
+        if (previous != null) {
+            previous.cancel();
+            previous.destroy();
+        }
+        try {
+            createSpeechRecognizer(false);
+            speechRecognizer.setRecognitionListener(recognitionListener);
+            sendVoiceState("starting", "On-device voice was unavailable. Trying Samsung voice input…");
+            startRecognizer(buildRecognizerIntent(false));
+        } catch (Exception error) {
+            finishVoice("", "Samsung voice input is not available. Your lesson is still open; use Skip this lesson and check voice settings later.");
+        }
     }
 
     private String speechError(int error) {
@@ -165,12 +234,22 @@ public class CallAssistantPlugin extends Plugin {
         activeVoiceCall = null;
         SpeechRecognizer recognizer = speechRecognizer;
         speechRecognizer = null;
+        recognitionListener = null;
         if (recognizer != null) {
             recognizer.cancel();
             recognizer.destroy();
         }
         if (call != null) resolveVoice(call, text, error);
+        if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).hideVoiceSafetyPanel();
         sendVoiceState(error.isEmpty() ? "complete" : "idle", error);
+    }
+
+    @Override
+    protected void handleOnPause() {
+        if (activeVoiceCall != null) {
+            voiceHandler.post(() -> finishVoice("", "Voice stopped because another phone screen opened. Return to Bigfoot’s Day and try again."));
+        }
+        super.handleOnPause();
     }
 
     private void resolveVoice(PluginCall call, String text, String error) {
