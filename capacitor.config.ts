@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.bigfootsoftware.bigfootsday',
   appName: "Bigfoot's Day",
   webDir: 'dist',
-  backgroundColor: '#030b11',
+  backgroundColor: '#083644',
   android: { allowMixedContent: false },
 }
 
