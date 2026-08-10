@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.13 release gate: Z Fold voice safety, complete first-customer journey, then APK packaging.
+# v0.14 release gate: successful Lesson 1 speech must advance without navigation.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.13-ZFold-Voice-Fix.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.14-Lesson-Voice-Repair.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.13-zfold-voice-fix \
-            Bigfoots-Day-v0.13-ZFold-Voice-Fix.apk \
+          gh release create v0.14-lesson-voice-repair \
+            Bigfoots-Day-v0.14-Lesson-Voice-Repair.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.13 — Z Fold Voice Fix" \
-            --notes "Physical-device recovery release for Samsung Z Fold5. Lesson 1 now remains visible while Bubba listens; voice no longer navigates to the dark assistant page. Android uses the supported on-device recognizer first, falls back to the default headless recognition service, includes the required RecognitionService manifest query, and adds a native STOP AND RETURN control that remains available even if the WebView misbehaves. A nine-second watchdog restores Today automatically. This installs separately and forces setup to Step 1. Release requires the complete eleven-step setup, real Android microphone permission, exact Lesson 1 route visibility, native recovery controls, every lesson path, Camera/Video controls, persistence, web regressions, and native lifecycle checks."
+            --title "Bigfoot's Day v0.14 — Lesson Voice Repair" \
+            --notes "Samsung Z Fold5 Lesson 1 repair. The prior build correctly kept Today visible while listening but still routed to the dark assistant page after speech succeeded. Lesson 1 now uses a separate practice state machine: it confirms the words, stays on Today, and advances directly to Lesson 2. The release gate tests both the real Android microphone start and an injected successful speech result, rejecting any assistant-page navigation, black/white shell, or failure to advance. The main app shell is also teal instead of near-black. This installs separately as Bigfoot v0.14 Lesson Fix."
