@@ -14,7 +14,13 @@ type SpeechRecognitionCtor = new () => SpeechRecognitionLike
 export async function speak(text: string, enabled = true, slow = false) {
   if (!enabled) return false
   const clean = text.replace(/[*#]/g, '')
-  if (isAndroid() && await speakNative(clean, slow)) return true
+  if (isAndroid()) {
+    const nativeSpoken = await Promise.race([
+      speakNative(clean, slow),
+      new Promise<boolean>(resolve => window.setTimeout(() => resolve(false), 3500)),
+    ])
+    if (nativeSpoken) return true
+  }
   if (!('speechSynthesis' in window)) return false
   window.speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(clean)
