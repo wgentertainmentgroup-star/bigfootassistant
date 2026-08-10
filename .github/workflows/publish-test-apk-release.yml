@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.12 release gate: web tests, complete first-customer Android journey, then APK packaging.
+# v0.13 release gate: Z Fold voice safety, complete first-customer journey, then APK packaging.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.12-Customer-Recovery.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.13-ZFold-Voice-Fix.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.12-customer-recovery \
-            Bigfoots-Day-v0.12-Customer-Recovery.apk \
+          gh release create v0.13-zfold-voice-fix \
+            Bigfoots-Day-v0.13-ZFold-Voice-Fix.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.12 — Customer Recovery Build" \
-            --notes "First-customer recovery release for Samsung Z Fold5. Voice is now a compact panel that leaves the app visible instead of covering it with a white or black screen. All five lessons have a clear action and Skip path; list and note practices return to Today and show the next lesson. This installs separately and forces setup to Step 1. Release requires the complete eleven-step setup, real Android microphone permission, voice panel visibility and cancel recovery, every lesson path, Camera/Video controls, core navigation, task/person/note creation, persistence after recreation, web regressions, and native lifecycle checks."
+            --title "Bigfoot's Day v0.13 — Z Fold Voice Fix" \
+            --notes "Physical-device recovery release for Samsung Z Fold5. Lesson 1 now remains visible while Bubba listens; voice no longer navigates to the dark assistant page. Android uses the supported on-device recognizer first, falls back to the default headless recognition service, includes the required RecognitionService manifest query, and adds a native STOP AND RETURN control that remains available even if the WebView misbehaves. A nine-second watchdog restores Today automatically. This installs separately and forces setup to Step 1. Release requires the complete eleven-step setup, real Android microphone permission, exact Lesson 1 route visibility, native recovery controls, every lesson path, Camera/Video controls, persistence, web regressions, and native lifecycle checks."
