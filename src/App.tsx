@@ -7,8 +7,8 @@ import type { AppState, EmailMessage, Person, Section, Task } from './types'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
-const setupMarker = 'bigfoots-day-easy-setup-v0130'
-const appVersion = 'v0.13 Z FOLD VOICE FIX'
+const setupMarker = 'bigfoots-day-easy-setup-v0140'
+const appVersion = 'v0.14 LESSON VOICE REPAIR'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -22,6 +22,12 @@ function placeConfirmedCall(name: string, phone: string) {
 }
 
 async function captureVoiceOnce(): Promise<{ text: string; error: string }> {
+  const testWindow = window as typeof window & { __bigfootVoiceTestResult?: { text: string; error: string } }
+  if (location.search.includes('testReload=') && testWindow.__bigfootVoiceTestResult) {
+    const result = testWindow.__bigfootVoiceTestResult
+    delete testWindow.__bigfootVoiceTestResult
+    return result
+  }
   // Android must never use WebView SpeechRecognition. On some Samsung phones that
   // fallback opens an external blank speech surface instead of staying in the app.
   if (isAndroidDevice()) return new Promise(resolve => {
@@ -182,6 +188,31 @@ function App() {
     }
   }
 
+  async function practiceLessonVoice() {
+    if (voiceRequestRef.current) {
+      await stopListening()
+      return false
+    }
+    voiceRequestRef.current = true
+    setSection('home')
+    setListening(true)
+    try {
+      const result = await captureVoiceOnce()
+      setSection('home')
+      if (!result.text) {
+        notify(result.error || 'I didn’t hear anything. Lesson 1 is still here, and you can try again or skip it.')
+        return false
+      }
+      notify('✓ Bubba heard you. Lesson 1 is complete and Lesson 2 is ready.')
+      void speak(`I heard you say, ${result.text}. Voice is working. Lesson two is ready.`, state.preferences.voice, state.preferences.slowVoice)
+      return true
+    } finally {
+      voiceRequestRef.current = false
+      setListening(false)
+      setSection('home')
+    }
+  }
+
   async function stopListening() {
     await cancelVoiceInput()
     voiceRequestRef.current = false
@@ -236,8 +267,8 @@ function App() {
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} openChatGPT={launchChatGPT} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(5, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
-        {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} openChatGPT={launchChatGPT} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(5, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} goHome={() => setSection('home')} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
         {section === 'people' && <People people={state.people} onChange={people => patch({ people })} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
@@ -320,7 +351,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.13</span></header>
+    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.14</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -355,10 +386,10 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; openChatGPT: () => Promise<void>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, openChatGPT, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; openChatGPT: () => Promise<void>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
-    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” This lesson will stay on screen. If voice is not ready, tap Stop listening or Skip this lesson.', action: '🎙 Practice talking', run: async () => { const worked = await talk(); if (worked) advanceLearning() } },
+    { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” Bubba will confirm what was heard and Lesson 2 will appear here. This practice never opens another page.', action: '🎙 Practice talking', run: async () => { const worked = await practiceTalk(); if (worked) advanceLearning() } },
     { title: 'Lesson 2: Use your list', copy: 'Bubba will add “drink a glass of water” to your list, then bring you back here.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); go('home'); advanceLearning() } },
     { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note, then bring you back here.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); go('home'); advanceLearning() } },
     { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
@@ -388,13 +419,13 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, openChatGPT, callH
   </div>
 }
 
-function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleLiveVoice, openChatGPT }: { state: AppState; thinking: boolean; listening: boolean; liveVoice: boolean; ask: (s: string) => void; listen: () => void; toggleLiveVoice: () => Promise<boolean>; openChatGPT: () => Promise<void> }) {
+function Assistant({ state, thinking, listening, liveVoice, ask, listen, toggleLiveVoice, openChatGPT, goHome }: { state: AppState; thinking: boolean; listening: boolean; liveVoice: boolean; ask: (s: string) => void; listen: () => void; toggleLiveVoice: () => Promise<boolean>; openChatGPT: () => Promise<void>; goHome: () => void }) {
   const [input, setInput] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
   useEffect(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), [state.chat, thinking])
   function submit(e: FormEvent) { e.preventDefault(); if (input.trim()) { ask(input); setInput('') } }
   const localMode = !state.preferences.apiBase.trim()
-  return <div className="page assistant-page"><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Bubba'}</h1><p>Ask naturally about your list, notes, people and day.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : localMode ? 'Talk to Bubba' : 'Start live conversation'}</button></div>
+  return <div className="page assistant-page"><button className="assistant-home" data-testid="assistant-home" onClick={goHome}>← Return to Today</button><div className="page-title split"><div className="assistant-heading"><span className="assistant-orb">✦</span><div><span className="eyebrow">YOUR PERSONAL ASSISTANT</span><h1>{state.preferences.assistantName || 'Bubba'}</h1><p>Ask naturally about your list, notes, people and day.</p></div></div><button className={`live-talk ${liveVoice ? 'active' : ''}`} onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live conversation' : localMode ? 'Talk to Bubba' : 'Start live conversation'}</button></div>
     {localMode && <section className="panel chatgpt-bridge"><div><span className="eyebrow">MORE HELP</span><h2>Need a more detailed answer?</h2><p>Tap the button and continue speaking.</p></div><button onClick={() => void openChatGPT()}>✦ Continue</button></section>}
     <div className="chat panel">{state.chat.slice(-20).map((m, i) => <div key={i} className={`bubble ${m.role}`}><small>{m.role === 'assistant' ? state.preferences.assistantName : 'You'}</small>{m.text}</div>)}{thinking && <div className="bubble assistant thinking">Bubba is thinking <i>•••</i></div>}<div ref={bottom} /></div>
     <div className="suggestions"><button onClick={() => ask('Manage my day using my open list and notes. Tell me what to do first.')}>Manage my day</button><button onClick={() => ask('Set a timer for 10 minutes')}>Set a timer</button><button onClick={() => ask('Add milk to my shopping list')}>Add shopping item</button><button onClick={() => ask('Add call the doctor to my list')}>Add to my list</button><button onClick={() => ask('What can you help me with?')}>What can Bubba do?</button></div>
