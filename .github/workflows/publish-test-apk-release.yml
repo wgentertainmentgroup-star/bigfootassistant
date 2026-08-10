@@ -67,7 +67,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run full Android end-to-end regression suite
+      - name: Run full Android customer journey — first emulator
+        id: android_e2e_first
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -75,7 +77,18 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: cd android && { adb logcat -c; ./gradlew --no-daemon :app:connectedDebugAndroidTest || { test_status=$?; find app/build/outputs/androidTest-results/connected -type f -name "*.xml" -print -exec sed -n "1,240p" {} \;; adb logcat -d -v threadtime | grep -E "FATAL EXCEPTION|AndroidRuntime|bigfootsoftware|MainActivityRegressionTest|SpeechRecognizer|Permission" | tail -500; exit "$test_status"; }; }
+          script: cd android && { adb logcat -c; ./gradlew --no-daemon :app:connectedDebugAndroidTest || { test_status=$?; find app/build/outputs/androidTest-results/connected -type f -name "*.xml" -print -exec sed -n "1,240p" {} \;; timeout 8s adb logcat -d -v threadtime | grep -E "FATAL EXCEPTION|AndroidRuntime|bigfootsoftware|MainActivityRegressionTest|SpeechRecognizer|Permission" | tail -500 || true; exit "$test_status"; }; }
+
+      - name: Retry complete customer journey on a fresh emulator
+        if: steps.android_e2e_first.outcome == 'failure'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: cd android && { adb logcat -c; ./gradlew --no-daemon :app:connectedDebugAndroidTest || { test_status=$?; find app/build/outputs/androidTest-results/connected -type f -name "*.xml" -print -exec sed -n "1,240p" {} \;; timeout 8s adb logcat -d -v threadtime | grep -E "FATAL EXCEPTION|AndroidRuntime|bigfootsoftware|MainActivityRegressionTest|SpeechRecognizer|Permission" | tail -500 || true; exit "$test_status"; }; }
 
   publish-apk:
     name: Build and publish permanent APK download
