@@ -60,7 +60,8 @@ public class MainActivityRegressionTest {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
-            completeSetup(scenario);
+            completeSetupWithCustomerProfile(scenario);
+            assertTrue("The setup profile must appear on Today", waitForJavascript(scenario, "document.body.innerText.includes('New Customer')", "true"));
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
             assertHealthyBigfootPage(scenario);
             assertEquals("Setup finish must not launch Samsung shortcut UI", Lifecycle.State.RESUMED, scenario.getState());
@@ -68,7 +69,7 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void c_actualFirstLessonButtonStartsVoiceWithoutAWhiteScreen() throws Exception {
+    public void c_actualFirstLessonButtonStartsVoiceWithoutCoveringTheApp() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -76,15 +77,44 @@ public class MainActivityRegressionTest {
             assertTrue(clickByText(scenario, "Practice talking"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('.assistant-page'))", "true"));
             assertTrue("The in-app voice screen must render", waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=voice-hud]'))", "true"));
+            assertTrue("Voice must be a panel, not a black full-screen cover", waitForJavascript(scenario, "document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight * 0.7 && Boolean(document.querySelector('.assistant-page'))", "true"));
             assertTrue("The voice screen must have a working escape button", clickSelector(scenario, "[data-testid=voice-cancel]"));
             assertTrue("Canceling voice must restore the app", waitForJavascript(scenario, "!document.querySelector('[data-testid=voice-hud]')", "true"));
+            assertTrue("A failed voice attempt must return to the lesson", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
             assertHealthyBigfootPage(scenario);
             assertEquals("The real first lesson must keep MainActivity resumed", Lifecycle.State.RESUMED, scenario.getState());
         }
     }
 
     @Test
-    public void d_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
+    public void d_newCustomerCanCompleteOrSkipEveryLesson() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+
+            assertTrue(waitForJavascript(scenario, "document.querySelector('[data-testid=lesson-card]').dataset.lesson === '1'", "true"));
+            assertTrue("Lesson 1 must have a skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 2: Use your list')", "true"));
+
+            assertTrue("Lesson 2 practice must run", clickSelector(scenario, "[data-testid=lesson-primary]"));
+            assertTrue("Lesson 2 must return home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 3: Save a note')", "true"));
+            assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('drink a glass of water')", "true"));
+
+            assertTrue("Lesson 3 practice must run", clickSelector(scenario, "[data-testid=lesson-primary]"));
+            assertTrue("Lesson 3 must return home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 4: Find Camera & Video')", "true"));
+            assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('I am learning to use Bigfoot')", "true"));
+
+            assertTrue("Lesson 4 must advance after the customer finds the controls", clickSelector(scenario, "[data-testid=lesson-primary]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 5: Get detailed help')", "true"));
+            assertTrue("Lesson 5 must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
+            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]'))", "true"));
+            assertHealthyBigfootPage(scenario);
+        }
+    }
+
+    @Test
+    public void e_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -130,6 +160,18 @@ public class MainActivityRegressionTest {
         assertTrue("Could not finish setup", clickSelector(scenario, ".setup-next.finish"));
     }
 
+    private void completeSetupWithCustomerProfile(ActivityScenario<MainActivity> scenario) throws Exception {
+        assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Step 1 of 11')", "true"));
+        assertTrue("Could not continue to setup step 2", clickSelector(scenario, ".setup-next"));
+        assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Step 2 of 11')", "true"));
+        setField(scenario, "Your first name", "New Customer");
+        for (int nextStep = 3; nextStep <= 11; nextStep++) {
+            assertTrue("Could not continue to setup step " + nextStep, clickSelector(scenario, ".setup-next"));
+            assertTrue("Setup step " + nextStep + " did not render", waitForJavascript(scenario, "document.body.innerText.includes('Step " + nextStep + " of 11')", "true"));
+        }
+        assertTrue("Could not finish customer setup", clickSelector(scenario, ".setup-next.finish"));
+    }
+
     private void resetToFreshInstall(ActivityScenario<MainActivity> scenario) throws Exception {
         assertTrue(waitForJavascript(scenario, "Boolean(document.body)", "true"));
         String reloadMarker = "e2e-" + System.nanoTime();
@@ -145,7 +187,7 @@ public class MainActivityRegressionTest {
     }
 
     private void assertHealthyBigfootPage(ActivityScenario<MainActivity> scenario) throws Exception {
-        String script = "Boolean(document.querySelector('.app,.setup-shell')) && document.body.innerText.trim().length > 30 && getComputedStyle(document.documentElement).backgroundColor !== 'rgb(255, 255, 255)'";
+        String script = "Boolean(document.querySelector('.app,.setup-shell')) && document.body.innerText.trim().length > 30 && getComputedStyle(document.documentElement).backgroundColor !== 'rgb(255, 255, 255)' && (!document.querySelector('[data-testid=voice-hud]') || document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight * 0.7)";
         assertTrue("Bigfoot rendered a blank or white page", waitForJavascript(scenario, script, "true"));
         scenario.onActivity(activity -> {
             assertNotNull(activity.getBridge());
