@@ -127,7 +127,29 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void d_nativeStopAndReturnRecoversEvenIfTheWebLayerFails() throws Exception {
+    public void d_successfulFirstLessonSpeechStaysOnTodayAndAdvances() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            assertEquals("true", evaluate(scenario, "window.__bigfootVoiceTestResult={text:'What can you do?',error:''};true"));
+            assertTrue("The real Lesson 1 button must accept a successful speech result", clickByText(scenario, "Practice talking"));
+
+            assertTrue(
+                "Successful Lesson 1 speech must stay on Today and visibly advance to Lesson 2",
+                waitForJavascript(
+                    scenario,
+                    "document.body.innerText.includes('Lesson 2: Use your list') && !document.querySelector('.assistant-page') && document.querySelector('[data-testid=lesson-card]').dataset.lesson === '2'",
+                    "true"
+                )
+            );
+            assertHealthyBigfootPage(scenario);
+            assertEquals("Successful lesson speech must keep MainActivity usable", Lifecycle.State.RESUMED, scenario.getState());
+        }
+    }
+
+    @Test
+    public void e_nativeStopAndReturnRecoversEvenIfTheWebLayerFails() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -148,7 +170,7 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void e_newCustomerCanCompleteOrSkipEveryLesson() throws Exception {
+    public void f_newCustomerCanCompleteOrSkipEveryLesson() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -175,7 +197,7 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void f_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
+    public void g_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
