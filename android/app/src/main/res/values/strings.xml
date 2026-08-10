@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Bigfoot v0.12 Customer</string>
-    <string name="title_activity_main">Bigfoot v0.12 Customer</string>
+    <string name="app_name">Bigfoot v0.13 Voice Fix</string>
+    <string name="title_activity_main">Bigfoot v0.13 Voice Fix</string>
     <string name="package_name">com.bigfootsoftware.bigfootsday</string>
     <string name="custom_url_scheme">com.bigfootsoftware.bigfootsday</string>
 </resources>
