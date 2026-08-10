@@ -184,9 +184,22 @@ describe('Android voice and setup safety contracts', () => {
   it('keeps Lesson 1 visible before and during microphone access', () => {
     expect(app).not.toContain("flushSync(() => setSection('assistant'))")
     expect(app).toContain("if (!state.preferences.apiBase.trim()) {\n      return startListening()")
-    expect(app).toContain('This lesson will stay on screen')
+    expect(app).toContain('This practice never opens another page')
     expect(app).not.toContain("localStorage.setItem(setupMarker, 'done'); void requestHomeShortcut()")
     expect(app).toContain('Add Icon to Home')
+  })
+
+  it('uses a separate Lesson 1 success path that cannot open the assistant page', () => {
+    const start = app.indexOf('async function practiceLessonVoice()')
+    const end = app.indexOf('async function stopListening()', start)
+    const lessonVoice = app.slice(start, end)
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    expect(lessonVoice).toContain("setSection('home')")
+    expect(lessonVoice).toContain('Voice is working. Lesson two is ready.')
+    expect(lessonVoice).not.toContain('askAssistant(')
+    expect(app).toContain('const worked = await practiceTalk(); if (worked) advanceLearning()')
+    expect(app).toContain('data-testid="assistant-home"')
   })
 
   it('uses a visible teal native fallback and can forcibly recover the WebView', () => {
@@ -232,7 +245,7 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('keeps a failed voice lesson visible while providing a clear skip path', () => {
-    expect(app).toContain('const worked = await talk(); if (worked) advanceLearning()')
+    expect(app).toContain('Lesson 1 is still here, and you can try again or skip it.')
     expect(app).toContain('data-testid="lesson-skip"')
     expect(app).toContain('Skip this lesson →')
   })
@@ -288,6 +301,7 @@ describe('Android voice and setup safety contracts', () => {
     expect(androidE2E).toContain('freshInstallCompletesEverySetupScreenWithoutLeavingTheApp')
     expect(androidE2E).toContain('actualFirstLessonButtonStartsVoiceWithoutCoveringTheApp')
     expect(androidE2E).toContain('firstLessonHandlesTheRealAndroidMicrophonePermissionPrompt')
+    expect(androidE2E).toContain('successfulFirstLessonSpeechStaysOnTodayAndAdvances')
     expect(androidE2E).toContain('nativeStopAndReturnRecoversEvenIfTheWebLayerFails')
     expect(androidE2E).toContain('coreUserJourneyAddsAndPersistsTasksPeopleAndNotes')
     expect(androidE2E).toContain('location.reload()')
@@ -314,9 +328,10 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.13 Voice Fix')
-    expect(app).toContain("const appVersion = 'v0.13 Z FOLD VOICE FIX'")
-    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0130'")
+    expect(labels).toContain('Bigfoot v0.14 Lesson Fix')
+    expect(app).toContain("const appVersion = 'v0.14 LESSON VOICE REPAIR'")
+    expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0140'")
+    expect(styles).not.toContain('linear-gradient(145deg,#030b11')
   })
 
   it('does not permit cleartext network traffic', () => {
