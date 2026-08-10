@@ -69,10 +69,10 @@ public class MainActivityRegressionTest {
             }
 
             assertTrue(
-                "After Android grants microphone access, Bigfoot must show either the conversation or the recovered first lesson",
+                "After Android grants microphone access, Lesson 1 must remain visible instead of changing to a dark page",
                 waitForJavascript(
                     scenario,
-                    "Boolean(document.querySelector('.assistant-page')) || document.body.innerText.includes('Lesson 1: Talk to Bubba')",
+                    "document.body.innerText.includes('Lesson 1: Talk to Bubba') && !document.querySelector('.assistant-page')",
                     "true"
                 )
             );
@@ -117,7 +117,7 @@ public class MainActivityRegressionTest {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
             assertTrue(clickByText(scenario, "Practice talking"));
-            assertTrue("Voice must keep either the assistant or lesson visible", waitForJavascript(scenario, "Boolean(document.querySelector('.assistant-page')) || document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
+            assertTrue("Voice must keep Lesson 1 visible and must not navigate to the dark assistant page", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba') && !document.querySelector('.assistant-page')", "true"));
             boolean voicePanelVisible = "true".equals(evaluate(scenario, "Boolean(document.querySelector('[data-testid=voice-hud]'))"));
             if (voicePanelVisible) {
                 assertTrue("Voice must be a panel, not a black full-screen cover", waitForJavascript(scenario, "document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().top > 0 && document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight", "true"));
@@ -131,7 +131,28 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void d_newCustomerCanCompleteOrSkipEveryLesson() throws Exception {
+    public void d_nativeStopAndReturnRecoversEvenIfTheWebLayerFails() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            scenario.onActivity(activity -> activity.showVoiceSafetyPanel(() -> {}));
+
+            UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+            UiObject2 stop = device.wait(Until.findObject(By.text("STOP AND RETURN")), 5000L);
+            assertNotNull("A native Stop and Return button must remain available above the WebView", stop);
+            stop.click();
+            device.waitForIdle();
+
+            assertTrue("Native recovery must reload the safe Today route", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba') && !document.querySelector('.assistant-page')", "true"));
+            assertTrue("The native recovery panel must close after use", device.wait(Until.gone(By.text("STOP AND RETURN")), 5000L));
+            assertHealthyBigfootPage(scenario);
+            assertEquals("Native voice recovery must keep MainActivity usable", Lifecycle.State.RESUMED, scenario.getState());
+        }
+    }
+
+    @Test
+    public void e_newCustomerCanCompleteOrSkipEveryLesson() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -158,7 +179,7 @@ public class MainActivityRegressionTest {
     }
 
     @Test
-    public void e_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
+    public void f_coreUserJourneyAddsAndPersistsTasksPeopleAndNotes() throws Exception {
         grantMicrophonePermission();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
@@ -231,8 +252,8 @@ public class MainActivityRegressionTest {
     }
 
     private void assertHealthyBigfootPage(ActivityScenario<MainActivity> scenario) throws Exception {
-        String script = "Boolean(document.querySelector('.app,.setup-shell')) && document.body.innerText.trim().length > 30 && getComputedStyle(document.documentElement).backgroundColor !== 'rgb(255, 255, 255)' && (!document.querySelector('[data-testid=voice-hud]') || document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight * 0.7)";
-        assertTrue("Bigfoot rendered a blank or white page", waitForJavascript(scenario, script, "true"));
+        String script = "Boolean(document.querySelector('.app,.setup-shell')) && document.body.innerText.trim().length > 30 && getComputedStyle(document.documentElement).backgroundColor !== 'rgb(255, 255, 255)' && getComputedStyle(document.documentElement).backgroundColor !== 'rgb(0, 0, 0)' && (!document.querySelector('[data-testid=voice-hud]') || document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight * 0.7)";
+        assertTrue("Bigfoot rendered a blank, white, or black page", waitForJavascript(scenario, script, "true"));
         scenario.onActivity(activity -> {
             assertNotNull(activity.getBridge());
             assertNotNull(activity.getBridge().getWebView());
