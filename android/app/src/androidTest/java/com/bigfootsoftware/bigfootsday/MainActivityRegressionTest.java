@@ -48,8 +48,26 @@ public class MainActivityRegressionTest {
             allow.click();
             device.waitForIdle();
 
-            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('.assistant-page'))", "true"));
-            Thread.sleep(1800L);
+            assertTrue(
+                "After Android grants microphone access, Bigfoot must show either the conversation or the recovered first lesson",
+                waitForJavascript(
+                    scenario,
+                    "Boolean(document.querySelector('.assistant-page')) || document.body.innerText.includes('Lesson 1: Talk to Bubba')",
+                    "true"
+                )
+            );
+            boolean voicePanelVisible = "true".equals(evaluate(scenario, "Boolean(document.querySelector('[data-testid=voice-hud]'))"));
+            if (voicePanelVisible) {
+                assertTrue(
+                    "The permission return must never produce a full-screen black or white voice layer",
+                    waitForJavascript(scenario, "document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().top > 0 && document.querySelector('[data-testid=voice-hud]').getBoundingClientRect().height < innerHeight", "true")
+                );
+                assertTrue("The permission-return voice panel must have a working Stop button", clickSelector(scenario, "[data-testid=voice-cancel]"));
+            }
+            assertTrue(
+                "If the emulator has no microphone input, Bigfoot must return to Lesson 1 instead of getting stuck",
+                waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true")
+            );
             assertHealthyBigfootPage(scenario);
             assertEquals("Returning from microphone permission must restore Bigfoot", Lifecycle.State.RESUMED, scenario.getState());
         }
