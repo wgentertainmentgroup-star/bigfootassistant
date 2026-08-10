@@ -124,7 +124,7 @@ public class CallAssistantPlugin extends Plugin {
             intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
             intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
             voiceTimeout = () -> finishVoice("", "Listening timed out. Tap the microphone and try again.");
-            voiceHandler.postDelayed(voiceTimeout, 15000L);
+            voiceHandler.postDelayed(voiceTimeout, 10000L);
             sendVoiceState("starting", "Starting microphone…");
             try {
                 speechRecognizer.startListening(intent);
