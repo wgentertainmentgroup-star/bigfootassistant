@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -56,6 +57,7 @@ public class CallAssistantPlugin extends Plugin {
     private PluginCall activeVoiceCall;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private Runnable voiceTimeout;
+    private long voiceSessionDeadline;
     private boolean usingOnDeviceRecognizer;
     private boolean fallbackAttempted;
 
@@ -98,6 +100,9 @@ public class CallAssistantPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             finishVoice("", "A new voice request started.");
             activeVoiceCall = call;
+            // One attempt gets one absolute safety window. A recognizer fallback must
+            // never restart the clock and leave an older customer waiting indefinitely.
+            voiceSessionDeadline = SystemClock.elapsedRealtime() + 9000L;
             fallbackAttempted = false;
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).showVoiceSafetyPanel(assistantName, () -> finishVoice("", "Voice listening was stopped. Your lesson is ready."));
@@ -173,9 +178,9 @@ public class CallAssistantPlugin extends Plugin {
         if (voiceTimeout != null) voiceHandler.removeCallbacks(voiceTimeout);
         voiceTimeout = () -> {
             finishVoice("", "Listening timed out. Your lesson was restored; tap the microphone to try again.");
-            if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).recoverAfterVoice();
         };
-        voiceHandler.postDelayed(voiceTimeout, 9000L);
+        long remaining = voiceSessionDeadline - SystemClock.elapsedRealtime();
+        voiceHandler.postDelayed(voiceTimeout, Math.max(1L, remaining));
         sendVoiceState("starting", usingOnDeviceRecognizer ? "Starting private on-device microphone…" : "Starting microphone…");
         try {
             speechRecognizer.startListening(intent);
@@ -238,6 +243,7 @@ public class CallAssistantPlugin extends Plugin {
         }
         PluginCall call = activeVoiceCall;
         activeVoiceCall = null;
+        voiceSessionDeadline = 0L;
         SpeechRecognizer recognizer = speechRecognizer;
         speechRecognizer = null;
         recognitionListener = null;
@@ -248,6 +254,9 @@ public class CallAssistantPlugin extends Plugin {
         if (call != null) resolveVoice(call, text, error);
         if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).hideVoiceSafetyPanel();
         sendVoiceState(error.isEmpty() ? "complete" : "idle", error);
+        if (!error.isEmpty() && getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).recoverAfterVoice();
+        }
     }
 
     @Override
