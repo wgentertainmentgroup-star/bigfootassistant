@@ -10,7 +10,7 @@ import brandMark from './assets/bigfoot-software-mark.png'
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
 const setupMarker = 'bigfoots-day-easy-setup-v0140'
-const appVersion = 'v0.17 TUTORIAL REPAIR'
+const appVersion = 'v0.18 SENIOR ACCEPTANCE'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -68,6 +68,7 @@ function App() {
   const [lastCaller, setLastCaller] = useState('')
   const [toast, setToast] = useState('')
   const [voiceUi, setVoiceUi] = useState<NativeVoiceState>({ state: 'idle' })
+  const [showMobileMore, setShowMobileMore] = useState(false)
   const stateRef = useRef(state)
   const realtimeRef = useRef<RealtimeController | null>(null)
   const voiceRequestRef = useRef(false)
@@ -127,7 +128,22 @@ function App() {
   const todayTasks = useMemo(() => state.tasks.filter(t => !t.deleted && !t.done && (!t.due || t.due <= new Date().toISOString().slice(0, 10))), [state.tasks])
 
   function patch(next: Partial<AppState>) { setState(s => ({ ...s, ...next })) }
-  function notify(message: string) { setToast(message); window.setTimeout(() => setToast(''), 2600) }
+  function notify(message: string) { setToast(message); window.setTimeout(() => setToast(''), 6500) }
+
+  function go(section: Section) {
+    setShowMobileMore(false)
+    setSection(section)
+  }
+
+  async function openPhoneTool(action: () => Promise<boolean>, name: string) {
+    const opened = await action()
+    if (!opened) notify(`${name} could not open. Tap HOME, then open it from your phone’s Apps screen.`)
+    return opened
+  }
+
+  async function goToPhoneHome() {
+    return openPhoneTool(openPhoneHome, 'The phone Home screen')
+  }
 
   async function askAssistant(message: string) {
     const text = message.trim()
@@ -278,32 +294,35 @@ function App() {
   }
 
   const rootClass = `${state.preferences.largeText ? 'large-text' : ''} ${state.preferences.highContrast ? 'high-contrast' : ''}`
-  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onCancelVoice={stopListening} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); setShowSetup(false); setSection('home') }} />
+  if (showSetup) return <SetupWizard state={state} voiceUi={voiceUi} onCancelVoice={stopListening} onChange={setState} onFinish={() => { setState(s => ({ ...s, preferences: { ...s.preferences, setupComplete: true } })); localStorage.setItem(setupMarker, 'done'); setShowSetup(false); setShowMobileMore(false); setSection('home') }} />
   return <div className={`app ${rootClass}`}>
     <header className="topbar">
-      <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
+      <button className="brand" onClick={() => go('home')} aria-label="Bigfoot's Day home">
         <img className="brand-mark" src={brandMark} alt="" /><span><b>Bigfoot’s Day</b><small>Your day. Made simple.</small></span>
       </button>
       <div className="version-badge">{appVersion}</div>
-      <div className="topbar-actions"><div className="date-chip"><span className="status-dot" /> {localDate()}</div><button className="phone-home" data-testid="phone-home-button" onClick={() => void openPhoneHome()} aria-label="Return to the phone home screen">⌂ HOME</button></div>
+      <div className="topbar-actions"><div className="date-chip"><span className="status-dot" /> {localDate()}</div><button className="phone-home" data-testid="phone-home-button" onClick={() => void goToPhoneHome()} aria-label="Return to the phone home screen">⌂ HOME</button></div>
     </header>
 
     <div className="layout">
       <nav className="sidebar" aria-label="Main navigation">
-        {(Object.keys(label) as Section[]).filter(key => key !== 'email' || Boolean(state.preferences.apiBase.trim())).map(key => <button key={key} className={section === key ? 'active' : ''} onClick={() => setSection(key)}>
+        {(Object.keys(label) as Section[]).filter(key => key !== 'email' || Boolean(state.preferences.apiBase.trim())).map(key => <button key={key} data-section={key} data-testid={`nav-${key}`} className={section === key && !showMobileMore ? 'active' : ''} onClick={() => go(key)}>
           <span className="nav-icon">{icon[key]}</span><span>{label[key]}</span>
         </button>)}
+        <button className={`mobile-more-nav ${showMobileMore ? 'active' : ''}`} data-testid="nav-more" onClick={() => setShowMobileMore(true)}><span className="nav-icon">☰</span><span>More</span></button>
         <div className="help-card"><b>Need help?</b><span>Say “Bubba, help me.”</span><button onClick={() => void toggleLiveVoice()}>🎙 {liveVoice ? 'End live talk' : 'Talk to Bubba'}</button></div>
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} practiceTask={practiceLessonTask} practiceNote={practiceLessonNote} openChatGPT={launchChatGPT} openPhone={openDialer} openTexts={openTextMessage} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(6, s.preferences.learningStep + 1) } }))} finishLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: 6 } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
-        {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} goHome={() => setSection('home')} />}
-        {section === 'email' && <Email state={state} notify={notify} />}
-        {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
-        {section === 'people' && <People people={state.people} onChange={people => patch({ people })} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
-        {section === 'notes' && <Notes notes={state.notes} onChange={notes => patch({ notes })} />}
-        {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onAddHomeShortcut={async () => notify(await requestHomeShortcut() ? 'Samsung opened the Add to Home screen request.' : 'Open Apps, press and hold your app icon, then tap Add to Home.')} onReset={() => { setState(defaultState); setShowSetup(true); notify('Your setup was reset.') }} />}
+        {showMobileMore ? <MorePage hasEmail={Boolean(state.preferences.apiBase.trim())} go={go} goPhoneHome={goToPhoneHome} runSetup={() => setShowSetup(true)} /> : <>
+          {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={go} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} practiceTask={practiceLessonTask} practiceNote={practiceLessonNote} openChatGPT={launchChatGPT} openCamera={() => openPhoneTool(openCamera, 'Camera')} openVideo={() => openPhoneTool(openVideoCamera, 'Video camera')} openPhone={() => openPhoneTool(openDialer, 'Phone dialer')} openTexts={() => openPhoneTool(openTextMessage, 'Text messages')} openPhoneHome={goToPhoneHome} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(6, s.preferences.learningStep + 1) } }))} finishLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: 6 } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+          {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} goHome={() => go('home')} />}
+          {section === 'email' && <Email state={state} notify={notify} />}
+          {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
+          {section === 'people' && <People people={state.people} onChange={people => patch({ people })} notify={notify} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
+          {section === 'notes' && <Notes notes={state.notes} onChange={notes => patch({ notes })} notify={notify} />}
+          {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onAddHomeShortcut={async () => notify(await requestHomeShortcut() ? 'Samsung opened the Add to Home screen request.' : 'Open Apps, press and hold your app icon, then tap Add to Home.')} onReset={() => { if (!window.confirm('Start over and erase your lists, people, notes, and settings from this phone? Tap Cancel to keep everything.')) return; setState(defaultState); localStorage.removeItem(setupMarker); setShowSetup(true) }} />}
+        </>}
       </main>
     </div>
 
@@ -381,7 +400,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.17</span></header>
+    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.18</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -393,7 +412,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
 
         {step === 3 && <div className="setup-content"><span className="eyebrow">VOICE SPEED</span><h1>How fast should Bubba talk?</h1><p className="setup-lead">Choose a pace, then listen to the sample.</p><div className="setup-pace"><button className={!p.slowVoice ? 'selected' : ''} onClick={() => setPref('slowVoice', false)}><b>Normal pace</b><small>Clear, everyday speaking speed</small></button><button className={p.slowVoice ? 'selected' : ''} onClick={() => setPref('slowVoice', true)}><b>Slower pace</b><small>More time between the words</small></button></div><button className={`setup-choice ${p.voice ? 'selected' : ''}`} onClick={() => setPref('voice', !p.voice)}><span>🔊</span><div><b>Speak answers out loud</b><small>{p.assistantName || 'Bubba'} can read answers to you</small></div><em>{p.voice ? 'ON' : 'OFF'}</em></button><button className="setup-test" onClick={() => speak(`Hi ${p.userName || 'there'}. I’m ${p.assistantName || 'Bubba'}. This is the ${p.slowVoice ? 'slower' : 'normal'} speaking pace.`, true, p.slowVoice)}>🔊 Hear this speaking pace</button></div>}
 
-        {step === 4 && <div className="setup-content"><span className="eyebrow">VOICE CHECK</span><h1>Let’s make sure voice really works.</h1><p className="setup-lead">Tap the button, allow the microphone when Samsung asks, then say <strong>“Hello Bubba.”</strong> Bubba will repeat what was heard.</p><button className="setup-action voice-check" disabled={voiceTest.status === 'listening'} onClick={() => void testVoice()}>🎙 {voiceTest.status === 'listening' ? 'Listening…' : voiceTest.status === 'passed' ? 'Test voice again' : 'Test my voice'}</button>{voiceTest.status === 'passed' && <div className="setup-success">✓ Voice passed. Bubba heard: “{voiceTest.text}” and played a spoken reply.</div>}{voiceTest.status === 'failed' && <div className="setup-later"><b>Voice is not ready yet.</b><br />{voiceTest.text}<br /><br />Check that media volume is turned up, then tap <strong>Test my voice</strong> again.</div>}</div>}
+        {step === 4 && <div className="setup-content"><span className="eyebrow">VOICE CHECK</span><h1>Let’s make sure voice really works.</h1><p className="setup-lead">Tap the button, allow the microphone when Samsung asks, then say <strong>“Hello Bubba.”</strong> Bubba will repeat what was heard.</p><button className="setup-action voice-check" disabled={voiceTest.status === 'listening'} onClick={() => void testVoice()}>🎙 {voiceTest.status === 'listening' ? 'Listening…' : voiceTest.status === 'passed' ? 'Test voice again' : 'Test my voice'}</button>{voiceTest.status === 'passed' && <div className="setup-success">✓ Voice passed. Bubba heard: “{voiceTest.text}” and played a spoken reply.</div>}{voiceTest.status === 'failed' && <div className="setup-later"><b>Voice is not ready yet.</b><br />{voiceTest.text}<br /><br />Check that media volume is turned up, then tap <strong>Test my voice</strong> again.<button className="setup-action secondary-action voice-settings" onClick={() => void openDeviceSettings()}>Open phone settings</button></div>}</div>}
 
         {step === 5 && <div className="setup-content"><span className="eyebrow">REMINDERS</span><h1>Would you like helpful reminders?</h1><p className="setup-lead">Your assistant can remind you about appointments, calls, medicine, errands, and anything else you put on your list.</p><div className="setup-permission"><span>🔔</span><div><b>Android will ask for permission.</b><p>When the phone asks, tap <strong>Allow</strong> if you want your reminders to appear.</p></div></div><button className="setup-action" onClick={() => void enableReminders()}>Turn on reminders</button>{reminderStatus === 'granted' && <div className="setup-success">✓ Reminders are turned on.</div>}{reminderStatus === 'not-granted' && <div className="setup-later">That’s okay. Reminders are not on. You can change this later.</div>}</div>}
 
@@ -416,7 +435,17 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, practiceTask, practiceNote, openChatGPT, openPhone, openTexts, callHelper, advanceLearning, finishLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; practiceTask: () => void; practiceNote: () => void; openChatGPT: () => Promise<void>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; finishLearning: () => void; toggleTask: (id: string) => void }) {
+function MorePage({ hasEmail, go, goPhoneHome, runSetup }: { hasEmail: boolean; go: (s: Section) => void; goPhoneHome: () => Promise<boolean>; runSetup: () => void }) {
+  return <div className="page more-page" data-testid="more-page"><div className="page-title"><div><span className="eyebrow">MORE CHOICES</span><h1>What would you like?</h1><p>These less-used choices are kept here so the bottom of your screen stays simple.</p></div></div><div className="more-grid">
+    {hasEmail && <button data-testid="more-email" onClick={() => go('email')}><span>✉</span><b>Email</b><small>Read important messages and review suggested replies.</small></button>}
+    <button data-testid="more-notes" onClick={() => go('notes')}><span>▤</span><b>Notes</b><small>Save something you do not want to forget.</small></button>
+    <button data-testid="more-settings" onClick={() => go('settings')}><span>⚙</span><b>Settings & Help</b><small>Change text, voice, helper, or run setup again.</small></button>
+    <button data-testid="more-setup" onClick={runSetup}><span>?</span><b>Walk through setup again</b><small>Start the easy step-by-step guide. Your saved information stays.</small></button>
+    <button data-testid="more-phone-home" onClick={() => void goPhoneHome()}><span>⌂</span><b>Phone Home</b><small>Leave the app and return to the normal Samsung Home screen.</small></button>
+  </div></div>
+}
+
+function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, practiceTask, practiceNote, openChatGPT, openCamera, openVideo, openPhone, openTexts, openPhoneHome, callHelper, advanceLearning, finishLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; practiceTask: () => void; practiceNote: () => void; openChatGPT: () => Promise<void>; openCamera: () => Promise<boolean>; openVideo: () => Promise<boolean>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; openPhoneHome: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; finishLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
     { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” Bubba will confirm what was heard and Lesson 2 will appear here. This practice never opens another page.', action: '🎙 Practice talking', run: async () => { const worked = await practiceTalk(); if (worked) advanceLearning() } },
@@ -424,13 +453,13 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, prac
     { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note while this Today screen stays open.', action: '▤ Practice saving a note', run: async () => practiceNote() },
     { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
     { title: 'Lesson 5: Find More Help', copy: 'The More Help button is below the everyday tools. It opens ChatGPT when you choose to use it. This practice stays on Today.', action: '✦ Find More Help', run: async () => { document.querySelector('.chatgpt-quick')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
-    { title: 'Lesson 6: Go Home and come back', copy: 'Tap Try HOME below to open the normal Samsung home screen. To return, find the Bigfoot Software logo labeled “Bigfoot v0.17 Tutorial Fix” and tap it. Your Today dashboard will be waiting.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
+    { title: 'Lesson 6: Go Home and come back', copy: 'Tap Try HOME below to open the normal Samsung home screen. To return, find the Bigfoot Software logo labeled “Bigfoot v0.18 Senior Tested” and tap it. Your Today dashboard will be waiting.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
   ][Math.min(5, state.preferences.learningStep)]
   return <div className="page home-page">
     <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div><small className="talk-example">Try saying: “What do I need to do today?”</small></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
     <section className="media-launcher" aria-label="Phone and camera shortcuts">
       <button className="media-button camera" data-testid="camera-button" onClick={() => void openCamera()}><span>▣</span><div><b>CAMERA</b><small>Take a photo</small></div></button>
-      <button className="media-button video" data-testid="video-button" onClick={() => void openVideoCamera()}><span>▶</span><div><b>VIDEO</b><small>Record a video</small></div></button>
+      <button className="media-button video" data-testid="video-button" onClick={() => void openVideo()}><span>▶</span><div><b>VIDEO</b><small>Record a video</small></div></button>
       <button className="media-button call" data-testid="call-button" onClick={() => void openPhone()}><span>☎</span><div><b>CALL</b><small>Open phone dialer</small></div></button>
       <button className="media-button text" data-testid="text-button" onClick={() => void openTexts()}><span>✉</span><div><b>TEXT</b><small>Open text messages</small></div></button>
     </section>
@@ -537,28 +566,28 @@ function Email({ state, notify }: { state: AppState; notify: (s: string) => void
 function Tasks({ tasks, onChange, notify }: { tasks: Task[]; onChange: (t: Task[]) => void; notify: (s: string) => void }) {
   const [text, setText] = useState(''); const [due, setDue] = useState(new Date().toISOString().slice(0, 10))
   const visible = tasks.filter(t => !t.deleted)
-  async function add(e: FormEvent) { e.preventDefault(); if (!text.trim()) return; const task: Task = { id: uid(), text: text.trim(), due, done: false, important: false, updatedAt: new Date().toISOString() }; onChange([task, ...tasks]); setText(''); if (due) { const when = new Date(`${due}T09:00:00`); if (when > new Date()) await scheduleReminder(Number(Date.now().toString().slice(-8)), "Bigfoot's Day", task.text, when) } notify('Added to your list.') }
+  async function add(e: FormEvent) { e.preventDefault(); if (!text.trim()) { notify('Type what you need to remember, then tap Add to my list.'); return } const task: Task = { id: uid(), text: text.trim(), due, done: false, important: false, updatedAt: new Date().toISOString() }; onChange([task, ...tasks]); setText(''); if (due) { const when = new Date(`${due}T09:00:00`); if (when > new Date()) await scheduleReminder(Number(Date.now().toString().slice(-8)), "Bigfoot's Day", task.text, when) } notify(`Added “${task.text}” to your list.`) }
   return <div className="page"><div className="page-title"><div><span className="eyebrow">KEEP IT SIMPLE</span><h1>My List</h1><p>One place for the things you don’t want to forget.</p></div></div>
     <form className="add-form panel" onSubmit={add}><label>What do you need to remember?<input value={text} onChange={e => setText(e.target.value)} placeholder="Example: Call the doctor" /></label><label>When?<input type="date" value={due} onChange={e => setDue(e.target.value)} /></label><button>Add to my list</button></form>
-    <section className="panel list-panel">{visible.length === 0 ? <div className="empty">Your list is empty.</div> : visible.map(t => <div className={`task-row ${t.done ? 'done' : ''}`} key={t.id}><input type="checkbox" checked={t.done} onChange={() => onChange(tasks.map(x => x.id === t.id ? { ...x, done: !x.done, updatedAt: new Date().toISOString() } : x))} /><span><b>{t.text}</b><small>{t.due || 'Any time'}</small></span><button className="star" onClick={() => onChange(tasks.map(x => x.id === t.id ? { ...x, important: !x.important, updatedAt: new Date().toISOString() } : x))}>{t.important ? '★' : '☆'}</button><button className="delete" onClick={() => onChange(tasks.map(x => x.id === t.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x))}>Remove</button></div>)}</section>
+    <section className="panel list-panel">{visible.length === 0 ? <div className="empty">Your list is empty.</div> : visible.map(t => <div className={`task-row ${t.done ? 'done' : ''}`} key={t.id}><input type="checkbox" aria-label={`Mark ${t.text} ${t.done ? 'not done' : 'done'}`} checked={t.done} onChange={() => onChange(tasks.map(x => x.id === t.id ? { ...x, done: !x.done, updatedAt: new Date().toISOString() } : x))} /><span><b>{t.text}</b><small>{t.due || 'Any time'}</small></span><button className="star" aria-label={`${t.important ? 'Remove important mark from' : 'Mark important'} ${t.text}`} onClick={() => onChange(tasks.map(x => x.id === t.id ? { ...x, important: !x.important, updatedAt: new Date().toISOString() } : x))}>{t.important ? '★' : '☆'}</button><button className="delete" onClick={() => { if (!window.confirm(`Remove “${t.text}” from your list? Tap Cancel to keep it.`)) return; onChange(tasks.map(x => x.id === t.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x)); notify('The item was removed.') }}>Remove</button></div>)}</section>
   </div>
 }
 
-function People({ people, onChange, onCallerAccess }: { people: Person[]; onChange: (p: Person[]) => void; onCallerAccess: () => void }) {
+function People({ people, onChange, notify, onCallerAccess }: { people: Person[]; onChange: (p: Person[]) => void; notify: (s: string) => void; onCallerAccess: () => void }) {
   const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [relationship, setRelationship] = useState('')
   const visible = people.filter(p => !p.deleted)
-  function add(e: FormEvent) { e.preventDefault(); if (!name.trim() || !phone.trim()) return; onChange([{ id: uid(), name: name.trim(), phone: phone.trim(), relationship: relationship.trim(), favorite: false, updatedAt: new Date().toISOString() }, ...people]); setName(''); setPhone(''); setRelationship('') }
+  function add(e: FormEvent) { e.preventDefault(); if (!name.trim() || !phone.trim()) { notify('Enter both a name and a phone number, then tap Save person.'); return } if (phone.replace(/\D/g, '').length < 7) { notify('That phone number looks too short. Please check it and try again.'); return } const savedName = name.trim(); onChange([{ id: uid(), name: savedName, phone: phone.trim(), relationship: relationship.trim(), favorite: false, updatedAt: new Date().toISOString() }, ...people]); setName(''); setPhone(''); setRelationship(''); notify(`${savedName} was saved.`) }
   return <div className="page"><div className="page-title split"><div><span className="eyebrow">YOUR PEOPLE</span><h1>People</h1><p>Keep important people easy to reach.</p></div><button className="secondary" onClick={onCallerAccess}>Turn on caller ID</button></div>
     <form className="add-form panel" onSubmit={add}><label>Name<input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" /></label><label>Phone<input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="(555) 123-4567" /></label><label>Who are they?<input value={relationship} onChange={e => setRelationship(e.target.value)} placeholder="Daughter, doctor…" /></label><button>Save person</button></form>
-    <div className="people-grid">{visible.length === 0 ? <div className="panel empty">No people saved yet. Add someone above.</div> : visible.map(p => <div className="person-card panel" key={p.id}><div className="avatar">{p.name.slice(0, 1).toUpperCase()}</div><div><h3>{p.name}</h3><p>{p.relationship || 'Contact'}</p><a href={`tel:${p.phone}`}>{p.phone}</a></div><button className="call" onClick={() => location.href = `tel:${p.phone}`}>☎ Call</button><button className="delete" onClick={() => onChange(people.map(x => x.id === p.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x))}>Remove</button></div>)}</div>
+    <div className="people-grid">{visible.length === 0 ? <div className="panel empty">No people saved yet. Add someone above.</div> : visible.map(p => <div className="person-card panel" key={p.id}><div className="avatar">{p.name.slice(0, 1).toUpperCase()}</div><div><h3>{p.name}</h3><p>{p.relationship || 'Contact'}</p><span className="phone-number">{p.phone}</span></div><button className="call" onClick={() => placeConfirmedCall(p.name, p.phone)}>☎ Call</button><button className="delete" onClick={() => { if (!window.confirm(`Remove ${p.name} from People? Tap Cancel to keep this person.`)) return; onChange(people.map(x => x.id === p.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x)); notify(`${p.name} was removed.`) }}>Remove</button></div>)}</div>
   </div>
 }
 
-function Notes({ notes, onChange }: { notes: AppState['notes']; onChange: (n: AppState['notes']) => void }) {
+function Notes({ notes, onChange, notify }: { notes: AppState['notes']; onChange: (n: AppState['notes']) => void; notify: (s: string) => void }) {
   const [text, setText] = useState('')
   const visible = notes.filter(n => !n.deleted)
-  function add(e: FormEvent) { e.preventDefault(); if (!text.trim()) return; const now = new Date().toISOString(); onChange([{ id: uid(), text: text.trim(), createdAt: now, updatedAt: now }, ...notes]); setText('') }
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">DON’T LOSE THE THOUGHT</span><h1>Notes</h1><p>Quick notes Bubba can use when helping you.</p></div></div><form className="note-form panel" onSubmit={add}><textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write a note…" /><button>Save note</button></form><div className="notes-grid">{visible.map(n => <article className="note panel" key={n.id}><p>{n.text}</p><small>{new Date(n.createdAt).toLocaleString()}</small><button className="delete" onClick={() => onChange(notes.map(x => x.id === n.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x))}>Remove</button></article>)}</div></div>
+  function add(e: FormEvent) { e.preventDefault(); if (!text.trim()) { notify('Type your note first, then tap Save note.'); return } const now = new Date().toISOString(); onChange([{ id: uid(), text: text.trim(), createdAt: now, updatedAt: now }, ...notes]); setText(''); notify('Your note was saved.') }
+  return <div className="page"><div className="page-title"><div><span className="eyebrow">DON’T LOSE THE THOUGHT</span><h1>Notes</h1><p>Quick notes Bubba can use when helping you.</p></div></div><form className="note-form panel" onSubmit={add}><textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write a note…" /><button>Save note</button></form><div className="notes-grid">{visible.map(n => <article className="note panel" key={n.id}><p>{n.text}</p><small>{new Date(n.createdAt).toLocaleString()}</small><button className="delete" onClick={() => { if (!window.confirm('Remove this note? Tap Cancel to keep it.')) return; onChange(notes.map(x => x.id === n.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x)); notify('The note was removed.') }}>Remove</button></article>)}</div></div>
 }
 
 function Settings({ state, onChange, notify, onRunSetup, onAddHomeShortcut, onReset }: { state: AppState; onChange: (s: AppState) => void; notify: (s: string) => void; onRunSetup: () => void; onAddHomeShortcut: () => void; onReset: () => void }) {

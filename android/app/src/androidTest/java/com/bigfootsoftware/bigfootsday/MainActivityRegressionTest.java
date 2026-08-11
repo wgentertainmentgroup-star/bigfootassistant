@@ -214,7 +214,7 @@ public class MainActivityRegressionTest {
             assertTrue("Lesson 4 must advance after the customer finds the controls", clickSelector(scenario, "[data-testid=lesson-primary]"));
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 5: Find More Help') && Boolean(document.querySelector('.home-page'))", "true"));
             assertTrue("Lesson 5 practice must stay inside the tutorial", clickSelector(scenario, "[data-testid=lesson-primary]"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.17 Tutorial Fix') && Boolean(document.querySelector('.home-page'))", "true"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.18 Senior Tested') && Boolean(document.querySelector('.home-page'))", "true"));
             assertEquals("Tutorial must never leave Today during Lessons 2 through 5", "false", evaluate(scenario, "window.__tutorialObserver.disconnect();window.__tutorialPageFailure"));
             assertTrue("The Home tutorial must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]'))", "true"));
@@ -229,6 +229,15 @@ public class MainActivityRegressionTest {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=camera-button]')) && Boolean(document.querySelector('[data-testid=video-button]')) && Boolean(document.querySelector('[data-testid=call-button]')) && Boolean(document.querySelector('[data-testid=text-button]')) && document.body.innerText.includes('CAMERA') && document.body.innerText.includes('VIDEO') && document.body.innerText.includes('CALL') && document.body.innerText.includes('TEXT')", "true"));
+            assertTrue("Every main action must be large enough for an older customer", waitForJavascript(scenario, "Array.from(document.querySelectorAll('[data-testid=camera-button],[data-testid=video-button],[data-testid=call-button],[data-testid=text-button],[data-testid=phone-home-button]')).every(function(e){var r=e.getBoundingClientRect();return r.width>=48&&r.height>=48})", "true"));
+            assertTrue("The visible phone navigation must include More", waitForJavascript(scenario, "getComputedStyle(document.querySelector('[data-testid=nav-more]')).display!=='none' && document.querySelector('[data-testid=nav-more]').getBoundingClientRect().height>=48", "true"));
+            assertTrue("Settings must not be hidden without a visible replacement", waitForJavascript(scenario, "getComputedStyle(document.querySelector('[data-testid=nav-settings]')).display==='none' && getComputedStyle(document.querySelector('[data-testid=nav-more]')).display!=='none'", "true"));
+
+            assertTrue("An older customer must be able to open the visible More menu", clickSelector(scenario, "[data-testid=nav-more]"));
+            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=more-page]')) && Boolean(document.querySelector('[data-testid=more-notes]')) && Boolean(document.querySelector('[data-testid=more-settings]')) && Boolean(document.querySelector('[data-testid=more-setup]')) && Boolean(document.querySelector('[data-testid=more-phone-home]'))", "true"));
+            assertTrue("Settings must be reachable through the visible More menu", clickSelector(scenario, "[data-testid=more-settings]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Easy to see & hear')", "true"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-home]"));
 
             assertTrue(clickByText(scenario, "My List"));
             setFieldAndSubmit(scenario, "Example: Call the doctor", "End-to-end doctor task", ".add-form");
@@ -241,13 +250,15 @@ public class MainActivityRegressionTest {
             submit(scenario, ".add-form");
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Test Helper')", "true"));
 
-            assertTrue(clickByText(scenario, "Notes"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-more]"));
+            assertTrue(clickSelector(scenario, "[data-testid=more-notes]"));
             setFieldAndSubmit(scenario, "Write a note…", "End-to-end saved note", ".note-form");
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('End-to-end saved note')", "true"));
 
-            assertTrue(clickByText(scenario, "Settings"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-more]"));
+            assertTrue(clickSelector(scenario, "[data-testid=more-settings]"));
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Easy to see & hear')", "true"));
-            assertTrue(clickByText(scenario, "Today"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-home]"));
             assertHealthyBigfootPage(scenario);
 
             Thread.sleep(900L);
@@ -316,6 +327,41 @@ public class MainActivityRegressionTest {
             completeSetup(scenario);
             assertTrue("Every lesson must show an Exit Tutorial control", clickSelector(scenario, "[data-testid=lesson-exit]"));
             assertTrue("Exit Tutorial must reveal the usable Today dashboard", waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]')) && Boolean(document.querySelector('[data-testid=camera-button]')) && Boolean(document.querySelector('[data-testid=call-button]'))", "true"));
+            assertHealthyBigfootPage(scenario);
+        }
+    }
+
+    @Test
+    public void l_seniorMistakesAreExplainedAndCancelledRemovalKeepsData() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+
+            assertTrue(clickSelector(scenario, "[data-testid=nav-tasks]"));
+            submit(scenario, ".add-form");
+            assertTrue("A blank task must explain the next step", waitForJavascript(scenario, "document.body.innerText.includes('Type what you need to remember, then tap Add to my list.')", "true"));
+            setFieldAndSubmit(scenario, "Example: Call the doctor", "Keep this medicine reminder", ".add-form");
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Keep this medicine reminder')", "true"));
+            assertEquals("true", evaluate(scenario, "window.confirm=function(){return false};true"));
+            assertTrue(clickSelector(scenario, ".task-row .delete"));
+            assertTrue("Cancel must keep the task", waitForJavascript(scenario, "document.body.innerText.includes('Keep this medicine reminder')", "true"));
+            assertEquals("true", evaluate(scenario, "window.confirm=function(){return true};true"));
+            assertTrue(clickSelector(scenario, ".task-row .delete"));
+            assertTrue("Confirmed removal must hide the task", waitForJavascript(scenario, "!document.body.innerText.includes('Keep this medicine reminder')", "true"));
+
+            assertTrue(clickSelector(scenario, "[data-testid=nav-people]"));
+            submit(scenario, ".add-form");
+            assertTrue("A blank person must explain the required fields", waitForJavascript(scenario, "document.body.innerText.includes('Enter both a name and a phone number, then tap Save person.')", "true"));
+            setField(scenario, "Jane Smith", "Trusted Daughter");
+            setField(scenario, "(555) 123-4567", "12");
+            submit(scenario, ".add-form");
+            assertTrue("A short phone number must be caught before saving", waitForJavascript(scenario, "document.body.innerText.includes('That phone number looks too short. Please check it and try again.')", "true"));
+
+            assertTrue(clickSelector(scenario, "[data-testid=nav-more]"));
+            assertTrue(clickSelector(scenario, "[data-testid=more-notes]"));
+            submit(scenario, ".note-form");
+            assertTrue("A blank note must explain the next step", waitForJavascript(scenario, "document.body.innerText.includes('Type your note first, then tap Save note.')", "true"));
             assertHealthyBigfootPage(scenario);
         }
     }
