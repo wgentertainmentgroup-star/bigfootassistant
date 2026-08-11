@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { localAssistant } from './App'
 import { defaultState, loadState, saveState } from './storage'
+import { assistantPossessive, cleanAssistantName, personalizeStarterGreeting } from './assistantName'
 import type { AppState } from './types'
 
 function freshState(): AppState {
@@ -45,6 +46,12 @@ describe('Bubba local assistant regression suite', () => {
     expect(localAssistant('Set timer for 30 seconds', freshState()).action).toEqual({ type: 'timer', seconds: 30, label: "Bubba's timer" })
     expect(localAssistant('Set a timer for 2 hours', freshState()).action).toEqual({ type: 'timer', seconds: 7200, label: "Bubba's timer" })
     expect(localAssistant('Set a timer for 100 hours', freshState()).action).toEqual({ type: 'timer', seconds: 86399, label: "Bubba's timer" })
+  })
+
+  it('uses the customer-chosen assistant name in native actions', () => {
+    const state = freshState()
+    state.preferences.assistantName = 'Walter'
+    expect(localAssistant('Set a timer for 10 minutes', state).action).toEqual({ type: 'timer', seconds: 600, label: "Walter's timer" })
   })
 
   it('sets a 7:30 PM alarm using 24-hour Android time', () => {
@@ -159,6 +166,17 @@ describe('saved-state compatibility', () => {
     expect(restored.preferences.assistantName).toBe('Bubba')
     expect(restored.tasks[0].id).toBe('welcome-task')
   })
+
+  it('cleans, saves, and restores a custom assistant identity', () => {
+    expect(cleanAssistantName('  Walter!!  ')).toBe('Walter')
+    expect(assistantPossessive('James')).toBe('James’')
+    expect(personalizeStarterGreeting("Hi. I’m Bubba, your personal assistant. Ready.", 'Walter')).toContain('I’m Walter')
+    const state = freshState()
+    state.preferences.assistantName = 'Walter'
+    saveState(state)
+    expect(loadState().preferences.assistantName).toBe('Walter')
+    expect(loadState().chat[0].text).toContain('I’m Walter')
+  })
 })
 
 describe('Android voice and setup safety contracts', () => {
@@ -185,7 +203,7 @@ describe('Android voice and setup safety contracts', () => {
     expect(manifest).toContain('android.speech.RecognitionService')
     expect(nativeBridge).toContain('/Android/i.test(navigator.userAgent)')
     expect(app).toContain('if (isAndroidDevice()) return new Promise')
-    expect(app).toContain('void requestVoiceInput().then(finish)')
+    expect(app).toContain('requestVoiceInput(cleanAssistantName(assistantName))')
   })
 
   it('keeps Lesson 1 visible before and during microphone access', () => {
@@ -316,14 +334,14 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('provides seven lessons and pins the icon before leaving the dashboard', () => {
-    expect(app).toContain('Lesson 1: Talk to Bubba')
+    expect(app).toContain('Lesson 1: Talk to ${assistantName}')
     expect(app).toContain('Lesson 2: Use your list')
     expect(app).toContain('Lesson 3: Save a note')
     expect(app).toContain('Lesson 4: Find Camera & Video')
     expect(app).toContain('Lesson 5: Find More Help')
     expect(app).toContain('Lesson 6: Put Bigfoot on Home')
     expect(app).toContain('Lesson 7: Go Home and come back')
-    expect(app).toContain('Bigfoot v0.19 Google Choice')
+    expect(app).toContain('Bigfoot v0.20 Custom Name')
     expect(app.indexOf('await addHomeIcon()')).toBeLessThan(app.indexOf('await openPhoneHome()'))
     expect(app).toContain('function practiceLessonTask()')
     expect(app).toContain('function practiceLessonNote()')
@@ -336,13 +354,34 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('Lesson {state.preferences.learningStep + 1} of 7')
     expect(androidE2E).toContain('newCustomerCanCompleteOrSkipEveryLesson')
     expect(androidE2E).toContain('completeSetupWithCustomerProfile')
-    expect(androidE2E).toContain('The setup profile must appear on Today')
+    expect(androidE2E).toContain('The setup profile and chosen assistant must appear on Today')
     expect(androidE2E).toContain('Lesson 2 must stay home and advance')
     expect(androidE2E).toContain('Lesson 3 must stay home and advance')
     expect(androidE2E).toContain('__tutorialPageFailure')
     expect(androidE2E).toContain('Tutorial must never leave Today during Lessons 2 through 5')
     expect(androidE2E).toContain('[data-testid=lessons-complete]')
     expect(androidE2E).toContain('customerCanExitTheTutorialImmediately')
+  })
+
+  it('uses one saved assistant name throughout the complete experience', () => {
+    const naming = readFileSync('src/assistantName.ts', 'utf8')
+    const realtime = readFileSync('src/realtime.ts', 'utf8')
+    const personality = readFileSync('server/personality.mjs', 'utf8')
+    expect(app).toContain('data-testid="setup-assistant-name"')
+    expect(app).toContain('data-testid="settings-assistant-name"')
+    expect(app).toContain('key === \'assistant\' ? `Ask ${assistantName}`')
+    expect(app).toContain('{assistantName.toUpperCase()} IS READY')
+    expect(app).toContain('assistantName={assistantName} state={voiceUi}')
+    expect(app).toContain('`${assistantName}\'s timer`')
+    expect(nativeBridge).toContain('startVoiceInput({ assistantName })')
+    expect(java).toContain('showVoiceSafetyPanel(assistantName')
+    expect(activity).toContain('name.toUpperCase(java.util.Locale.US) + " IS LISTENING')
+    expect(realtime).toContain("'X-Bigfoot-Assistant-Name': options.assistantName")
+    expect(server).toContain('personalityFor(assistantName)')
+    expect(personality).toContain('You are ${name}, the personal assistant')
+    expect(naming).toContain('cleanAssistantName')
+    expect(androidE2E).toContain('WALTER IS READY')
+    expect(androidE2E).toContain('Lesson 1: Talk to Walter')
   })
 
   it('uses a calm UK speech profile with a US fallback', () => {
@@ -469,8 +508,8 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.19 Google Choice')
-    expect(app).toContain("const appVersion = 'v0.19 GOOGLE CHOICE'")
+    expect(labels).toContain('Bigfoot v0.20 Custom Name')
+    expect(app).toContain("const appVersion = 'v0.20 CUSTOM NAME'")
     expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0140'")
     expect(styles).not.toContain('linear-gradient(145deg,#030b11')
   })

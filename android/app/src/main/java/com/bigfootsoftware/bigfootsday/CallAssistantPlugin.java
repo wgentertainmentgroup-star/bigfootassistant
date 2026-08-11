@@ -88,6 +88,7 @@ public class CallAssistantPlugin extends Plugin {
     }
 
     private void startInAppSpeechRecognition(PluginCall call) {
+        String assistantName = safeAssistantName(call.getString("assistantName", "Bubba"));
         boolean onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
         if (!onDeviceAvailable && !SpeechRecognizer.isRecognitionAvailable(getContext())) {
@@ -99,7 +100,7 @@ public class CallAssistantPlugin extends Plugin {
             activeVoiceCall = call;
             fallbackAttempted = false;
             if (getActivity() instanceof MainActivity) {
-                ((MainActivity) getActivity()).showVoiceSafetyPanel(() -> finishVoice("", "Voice listening was stopped. Your lesson is ready."));
+                ((MainActivity) getActivity()).showVoiceSafetyPanel(assistantName, () -> finishVoice("", "Voice listening was stopped. Your lesson is ready."));
             }
             try {
                 createSpeechRecognizer(onDeviceAvailable);
@@ -262,6 +263,12 @@ public class CallAssistantPlugin extends Plugin {
         response.put("text", text);
         response.put("error", error);
         call.resolve(response);
+    }
+
+    private String safeAssistantName(String value) {
+        String cleaned = value == null ? "" : value.replaceAll("[^\\p{L}\\p{N}' -]", " ").replaceAll("\\s+", " ").trim();
+        if (cleaned.isEmpty()) return "Bubba";
+        return cleaned.length() > 24 ? cleaned.substring(0, 24).trim() : cleaned;
     }
 
     @PluginMethod

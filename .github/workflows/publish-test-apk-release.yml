@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.19 Google choice gate: phone-only features remain complete while Google stays optional.
+# v0.20 custom-name gate: the chosen assistant identity must follow the customer everywhere.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.19-Google-Choice.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.20-Custom-Name.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.19-google-choice \
-            Bigfoots-Day-v0.19-Google-Choice.apk \
+          gh release create v0.20-custom-name \
+            Bigfoots-Day-v0.20-Custom-Name.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.19 — Google Choice" \
-            --notes "Samsung Z Fold5 test build for older customers. Phone tasks and the installed phone calendar work without a Google account. An optional Google connection adds Gmail, Google Tasks, and Google Calendar. Bubba can create spoken tasks and prepare calendar events or invitations for review before saving. Setup now walks through microphone, notifications, phonebook access, Google choice, and a two-step Samsung Home icon lesson. The compact header respects Android's carrier and Wi-Fi status area. Android regression tests cover all setup screens, all seven lessons, voice recovery, calendar and task discovery, phonebook import discovery, persisted daily data, and visible senior-friendly navigation. Installs separately as Bigfoot v0.19 Google Choice."
+            --title "Bigfoot's Day v0.20 — Custom Assistant Name" \
+            --notes "Samsung Z Fold5 test build for older customers. Setup and Settings now let the customer choose any short assistant name. That saved name is used throughout navigation, dashboard status, starter lessons, voice controls, the native Stop and Return safety panel, timer labels, notes, email suggestions, Google help, live voice, and cloud assistant instructions. A full new-customer Android test names the assistant Walter, confirms the old Bubba dashboard label is gone, restarts the app, and verifies Walter remains active. All v0.19 phone tasks, Calendar, phonebook, permissions, Google choice, voice recovery, Home icon, and senior-friendly navigation remain included. Installs separately as Bigfoot v0.20 Custom Name."

@@ -1,4 +1,5 @@
 import type { AppState } from './types'
+import { cleanAssistantName, personalizeStarterGreeting } from './assistantName'
 
 const KEY = 'bigfoots-day-state-v1'
 const serviceBase = (import.meta.env.VITE_BIGFOOT_API_BASE || '').trim().replace(/\/$/, '')
@@ -37,16 +38,18 @@ export function loadState(): AppState {
     if (!raw) return defaultState
     const parsed = JSON.parse(raw) as AppState
     const stamp = new Date(0).toISOString()
+    const assistantName = parsed.preferences?.assistantName === 'Scout' ? 'Bubba' : cleanAssistantName(parsed.preferences?.assistantName)
     return {
       ...defaultState,
       ...parsed,
       tasks: (parsed.tasks || []).map(t => ({ ...t, updatedAt: t.updatedAt || stamp })),
       people: (parsed.people || []).map(p => ({ ...p, updatedAt: p.updatedAt || stamp })),
       notes: (parsed.notes || []).map(n => ({ ...n, updatedAt: n.updatedAt || n.createdAt || stamp })),
+      chat: (parsed.chat || defaultState.chat).map(message => message.role === 'assistant' ? { ...message, text: personalizeStarterGreeting(message.text, assistantName) } : message),
       preferences: {
         ...defaultState.preferences,
         ...parsed.preferences,
-        assistantName: !parsed.preferences?.assistantName || parsed.preferences.assistantName === 'Scout' ? 'Bubba' : parsed.preferences.assistantName,
+        assistantName,
         apiBase: serviceBase || parsed.preferences?.apiBase || '',
         companionToken: appToken || parsed.preferences?.companionToken || '',
       },
