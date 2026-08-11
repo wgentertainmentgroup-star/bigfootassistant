@@ -62,19 +62,20 @@ public class MainActivity extends BridgeActivity {
         ), 1200L);
     }
 
-    public void showVoiceSafetyPanel(Runnable stopAction) {
+    public void showVoiceSafetyPanel(String assistantName, Runnable stopAction) {
         runOnUiThread(() -> {
             hideVoiceSafetyPanel();
+            String name = assistantName == null || assistantName.trim().isEmpty() ? "Bubba" : assistantName.trim();
             LinearLayout panel = new LinearLayout(this);
             panel.setOrientation(LinearLayout.VERTICAL);
             panel.setGravity(Gravity.CENTER);
             panel.setPadding(dp(18), dp(14), dp(18), dp(14));
             panel.setBackgroundColor(Color.rgb(11, 74, 91));
             panel.setElevation(dp(18));
-            panel.setContentDescription("Bubba voice safety controls");
+            panel.setContentDescription(name + " voice safety controls");
 
             TextView status = new TextView(this);
-            status.setText("BUBBA IS LISTENING — YOUR LESSON IS STILL OPEN");
+            status.setText(name.toUpperCase(java.util.Locale.US) + " IS LISTENING — YOUR LESSON IS STILL OPEN");
             status.setTextColor(Color.WHITE);
             status.setTextSize(17f);
             status.setGravity(Gravity.CENTER);
@@ -90,7 +91,7 @@ public class MainActivity extends BridgeActivity {
             stop.setTextColor(Color.WHITE);
             stop.setBackgroundColor(Color.rgb(177, 48, 44));
             stop.setMinHeight(dp(62));
-            stop.setContentDescription("Stop Bubba voice and return to the lesson");
+            stop.setContentDescription("Stop " + name + " voice and return to the lesson");
             stop.setOnClickListener(view -> {
                 hideVoiceSafetyPanel();
                 if (stopAction != null) stopAction.run();

@@ -3,6 +3,7 @@ export type RealtimeController = { stop: () => void }
 export async function startRealtimeVoice(options: {
   apiBase: string
   companionToken: string
+  assistantName: string
   onStatus?: (message: string) => void
   onAssistantText?: (text: string) => void
 }): Promise<RealtimeController> {
@@ -18,7 +19,7 @@ export async function startRealtimeVoice(options: {
   for (const track of stream.getTracks()) pc.addTrack(track, stream)
 
   const events = pc.createDataChannel('oai-events')
-  events.onopen = () => options.onStatus?.('Bubba is listening')
+  events.onopen = () => options.onStatus?.(`${options.assistantName} is listening`)
   events.onmessage = event => {
     try {
       const message = JSON.parse(event.data)
@@ -31,7 +32,7 @@ export async function startRealtimeVoice(options: {
   const base = options.apiBase.trim().replace(/\/$/, '') || (location.protocol === 'file:' ? 'http://127.0.0.1:8787' : '')
   const response = await fetch(`${base}/api/realtime`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/sdp', 'X-Bigfoot-Token': options.companionToken },
+    headers: { 'Content-Type': 'application/sdp', 'X-Bigfoot-Token': options.companionToken, 'X-Bigfoot-Assistant-Name': options.assistantName },
     body: offer.sdp,
   })
   if (!response.ok) {

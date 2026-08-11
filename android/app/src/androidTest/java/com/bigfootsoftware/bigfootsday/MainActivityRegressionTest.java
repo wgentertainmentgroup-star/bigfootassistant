@@ -105,8 +105,19 @@ public class MainActivityRegressionTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
             completeSetupWithCustomerProfile(scenario);
-            assertTrue("The setup profile must appear on Today", waitForJavascript(scenario, "document.body.innerText.includes('New Customer')", "true"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true"));
+            assertTrue("The setup profile and chosen assistant must appear on Today", waitForJavascript(scenario, "document.body.innerText.includes('New Customer') && document.body.innerText.includes('WALTER IS READY') && document.body.innerText.includes('Ask Walter')", "true"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Walter') && !document.body.innerText.includes('BUBBA IS READY')", "true"));
+            assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('Walter')", "true"));
+            evaluate(scenario, "setTimeout(function(){location.reload()},0);'reloading'");
+            assertTrue("The chosen assistant name must survive a full restart", waitForJavascript(scenario, "document.body.innerText.includes('WALTER IS READY') && document.body.innerText.includes('Lesson 1: Talk to Walter')", "true"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-more]"));
+            assertTrue(clickSelector(scenario, "[data-testid=more-settings]"));
+            setField(scenario, "Assistant name", "Arthur");
+            assertTrue("Changing the name in Settings must update the Settings screen immediately", waitForJavascript(scenario, "document.body.innerText.includes('You & Arthur') && document.body.innerText.includes('Hear Arthur')", "true"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-home]"));
+            assertTrue("The new name must replace the old name throughout Today", waitForJavascript(scenario, "document.body.innerText.includes('ARTHUR IS READY') && document.body.innerText.includes('Ask Arthur') && document.body.innerText.includes('Lesson 1: Talk to Arthur') && !document.body.innerText.includes('WALTER IS READY')", "true"));
+            evaluate(scenario, "setTimeout(function(){location.reload()},0);'reloading'");
+            assertTrue("A Settings rename must survive another full restart", waitForJavascript(scenario, "document.body.innerText.includes('ARTHUR IS READY') && document.body.innerText.includes('Lesson 1: Talk to Arthur')", "true"));
             assertHealthyBigfootPage(scenario);
             assertEquals("Setup finish must not launch Samsung shortcut UI", Lifecycle.State.RESUMED, scenario.getState());
         }
@@ -162,11 +173,11 @@ public class MainActivityRegressionTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
-            scenario.onActivity(activity -> activity.showVoiceSafetyPanel(() -> {}));
+            scenario.onActivity(activity -> activity.showVoiceSafetyPanel("Walter", () -> {}));
 
             UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
             UiObject2 stop = device.wait(
-                Until.findObject(By.desc("Stop Bubba voice and return to the lesson")),
+                Until.findObject(By.desc("Stop Walter voice and return to the lesson")),
                 15000L
             );
             if (stop == null) {
@@ -218,7 +229,7 @@ public class MainActivityRegressionTest {
             assertEquals("Tutorial must never leave Today during Lessons 2 through 5", "false", evaluate(scenario, "window.__tutorialObserver.disconnect();window.__tutorialPageFailure"));
             assertEquals("true", evaluate(scenario, "window.__bigfootHomeShortcutTestResult=true;true"));
             assertTrue("The icon lesson must request Home placement before leaving the app", clickSelector(scenario, "[data-testid=lesson-primary]"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 7: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.19 Google Choice') && Boolean(document.querySelector('.home-page'))", "true"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 7: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.20 Custom Name') && Boolean(document.querySelector('.home-page'))", "true"));
             assertTrue("The final Home tutorial must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]'))", "true"));
             assertHealthyBigfootPage(scenario);
@@ -391,6 +402,7 @@ public class MainActivityRegressionTest {
         assertTrue("Could not continue to setup step 2", clickSelector(scenario, ".setup-next"));
         assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Step 2 of 11')", "true"));
         setField(scenario, "Your first name", "New Customer");
+        setField(scenario, "Bubba", "Walter");
         for (int nextStep = 3; nextStep <= 11; nextStep++) {
             assertTrue("Could not continue to setup step " + nextStep, clickSelector(scenario, ".setup-next"));
             assertTrue("Setup step " + nextStep + " did not render", waitForJavascript(scenario, "document.body.innerText.includes('Step " + nextStep + " of 11')", "true"));
