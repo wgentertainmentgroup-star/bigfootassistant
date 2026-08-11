@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.16 release gate: every voice entry point and home-dashboard return must be safe.
+# v0.17 release gate: every tutorial transition must remain visibly on Today.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.16-Your-Day-Dashboard.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.17-Tutorial-Repair.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.16-your-day-dashboard \
-            Bigfoots-Day-v0.16-Your-Day-Dashboard.apk \
+          gh release create v0.17-tutorial-repair \
+            Bigfoots-Day-v0.17-Tutorial-Repair.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.16 — Your Day Dashboard" \
-            --notes "Samsung Z Fold5 home-dashboard release. Every microphone entry point stays on the current screen after speech, native recovery preserves a healthy page, and returning from Android tools restores Today. Adds direct Call, Text, Camera, Video, and Phone Home controls; the supplied Bigfoot Software logo; direct-to-user wording; and standard camera/headset/media keys used by many Bluetooth smart-glasses controls. The release gate tests fresh setup, every lesson, successful Lesson 1 and main-orb speech, black/white-screen protection, persistence, dashboard return, and hardware-key mappings. Installs separately as Bigfoot v0.16 Your Day."
+            --title "Bigfoot's Day v0.17 — Tutorial Repair" \
+            --notes "Samsung Z Fold5 tutorial repair. Lessons 2 and 3 now use dedicated instant stay-on-Today actions like Lesson 1 and never route through the assistant page. Lesson 5 also stays on Today, every lesson has a clear Exit Tutorial control, and all normal voice and Today quick actions are prohibited from changing pages. The Android test observes every intermediate tutorial render and fails if the home page disappears, the assistant page appears, or the screen becomes blank. The release gate also repeats fresh setup, voice success/failure, all six lessons, persistence, HOME return, and hardware-key checks. Installs separately as Bigfoot v0.17 Tutorial Fix."

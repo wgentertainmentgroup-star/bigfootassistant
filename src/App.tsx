@@ -10,7 +10,7 @@ import brandMark from './assets/bigfoot-software-mark.png'
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
 const setupMarker = 'bigfoots-day-easy-setup-v0140'
-const appVersion = 'v0.16 HOME DASHBOARD'
+const appVersion = 'v0.17 TUTORIAL REPAIR'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -129,12 +129,11 @@ function App() {
   function patch(next: Partial<AppState>) { setState(s => ({ ...s, ...next })) }
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(''), 2600) }
 
-  async function askAssistant(message: string, openAssistantPage = true) {
+  async function askAssistant(message: string) {
     const text = message.trim()
     if (!text) return
     const userMessage = { role: 'user' as const, text }
     setState(s => ({ ...s, chat: [...s.chat, userMessage] }))
-    if (openAssistantPage) setSection('assistant')
     setThinking(true)
     try {
       const configuredBase = state.preferences.apiBase.trim().replace(/\/$/, '')
@@ -185,7 +184,7 @@ function App() {
       const result = await captureVoiceOnce()
       // Speech must never change pages. Keeping the current screen mounted avoids
       // Samsung WebView black/white transitions and makes every mic button safe.
-      if (result.text) { await askAssistant(result.text, false); return true }
+      if (result.text) { await askAssistant(result.text); return true }
       notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
       return false
     } finally {
@@ -217,6 +216,32 @@ function App() {
       setListening(false)
       setSection('home')
     }
+  }
+
+  function practiceLessonTask() {
+    const stamp = new Date().toISOString()
+    const today = stamp.slice(0, 10)
+    setSection('home')
+    setState(s => {
+      const alreadyAdded = s.tasks.some(task => !task.deleted && task.text.toLowerCase() === 'drink a glass of water')
+      const tasks = alreadyAdded ? s.tasks : [{ id: uid(), text: 'drink a glass of water', due: today, done: false, important: false, updatedAt: stamp }, ...s.tasks]
+      return { ...s, tasks, preferences: { ...s.preferences, learningStep: Math.max(2, s.preferences.learningStep) } }
+    })
+    notify('✓ Added to your list. Lesson 3 is ready.')
+    void speak('Done. I added drink a glass of water to your list. Lesson three is ready.', state.preferences.voice, state.preferences.slowVoice)
+  }
+
+  function practiceLessonNote() {
+    const stamp = new Date().toISOString()
+    setSection('home')
+    setState(s => {
+      const noteText = 'I am learning to use my assistant'
+      const alreadyAdded = s.notes.some(note => !note.deleted && note.text === noteText)
+      const notes = alreadyAdded ? s.notes : [{ id: uid(), text: noteText, createdAt: stamp, updatedAt: stamp }, ...s.notes]
+      return { ...s, notes, preferences: { ...s.preferences, learningStep: Math.max(3, s.preferences.learningStep) } }
+    })
+    notify('✓ Note saved. Lesson 4 is ready.')
+    void speak('Done. I saved the practice note. Lesson four is ready.', state.preferences.voice, state.preferences.slowVoice)
   }
 
   async function stopListening() {
@@ -272,7 +297,7 @@ function App() {
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} openChatGPT={launchChatGPT} openPhone={openDialer} openTexts={openTextMessage} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(6, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} practiceTask={practiceLessonTask} practiceNote={practiceLessonNote} openChatGPT={launchChatGPT} openPhone={openDialer} openTexts={openTextMessage} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(6, s.preferences.learningStep + 1) } }))} finishLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: 6 } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
         {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} goHome={() => setSection('home')} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
@@ -356,7 +381,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.16</span></header>
+    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.17</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -391,15 +416,15 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, openChatGPT, openPhone, openTexts, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; openChatGPT: () => Promise<void>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, practiceTask, practiceNote, openChatGPT, openPhone, openTexts, callHelper, advanceLearning, finishLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; practiceTask: () => void; practiceNote: () => void; openChatGPT: () => Promise<void>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; finishLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
     { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” Bubba will confirm what was heard and Lesson 2 will appear here. This practice never opens another page.', action: '🎙 Practice talking', run: async () => { const worked = await practiceTalk(); if (worked) advanceLearning() } },
-    { title: 'Lesson 2: Use your list', copy: 'Bubba will add “drink a glass of water” to your list, then bring you back here.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); go('home'); advanceLearning() } },
-    { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note, then bring you back here.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use my assistant'); go('home'); advanceLearning() } },
+    { title: 'Lesson 2: Use your list', copy: 'Bubba will add “drink a glass of water” while this Today screen stays open.', action: '✓ Practice adding a task', run: async () => practiceTask() },
+    { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note while this Today screen stays open.', action: '▤ Practice saving a note', run: async () => practiceNote() },
     { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
-    { title: 'Lesson 5: Get detailed help', copy: 'For detailed questions, your assistant opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
-    { title: 'Lesson 6: Go Home and come back', copy: 'Tap Try HOME below to open the normal Samsung home screen. To return, find the Bigfoot Software logo labeled “Bigfoot v0.16 Your Day” and tap it. Your Today dashboard will be waiting.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
+    { title: 'Lesson 5: Find More Help', copy: 'The More Help button is below the everyday tools. It opens ChatGPT when you choose to use it. This practice stays on Today.', action: '✦ Find More Help', run: async () => { document.querySelector('.chatgpt-quick')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
+    { title: 'Lesson 6: Go Home and come back', copy: 'Tap Try HOME below to open the normal Samsung home screen. To return, find the Bigfoot Software logo labeled “Bigfoot v0.17 Tutorial Fix” and tap it. Your Today dashboard will be waiting.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
   ][Math.min(5, state.preferences.learningStep)]
   return <div className="page home-page">
     <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div><small className="talk-example">Try saying: “What do I need to do today?”</small></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
@@ -409,7 +434,7 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, open
       <button className="media-button call" data-testid="call-button" onClick={() => void openPhone()}><span>☎</span><div><b>CALL</b><small>Open phone dialer</small></div></button>
       <button className="media-button text" data-testid="text-button" onClick={() => void openTexts()}><span>✉</span><div><b>TEXT</b><small>Open text messages</small></div></button>
     </section>
-    {state.preferences.learningStep < 6 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 6 · You can skip any lesson and return later.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
+    {state.preferences.learningStep < 6 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 6 · You can skip this lesson or exit the tutorial at any time.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button><button className="lesson-exit" data-testid="lesson-exit" onClick={finishLearning}>Exit tutorial and use the app</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
