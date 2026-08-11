@@ -2,7 +2,7 @@ name: Publish Bigfoot's Day Test APK
 # v0.20 custom-name gate: the chosen assistant identity must follow the customer everywhere.
 
 on:
-  push:
+  pull_request:
     branches:
       - main
     paths:
