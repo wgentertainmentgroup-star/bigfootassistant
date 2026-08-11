@@ -295,7 +295,10 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('has a listening timeout and actionable error messages', () => {
-    expect(java).toContain('postDelayed(voiceTimeout, 9000L)')
+    expect(java).toContain('voiceSessionDeadline = SystemClock.elapsedRealtime() + 9000L')
+    expect(java).toContain('long remaining = voiceSessionDeadline - SystemClock.elapsedRealtime()')
+    expect(java).toContain('postDelayed(voiceTimeout, Math.max(1L, remaining))')
+    expect(java).toContain('voiceSessionDeadline = 0L')
     expect(app).toContain("}, 9000)")
     expect(app).toContain("}, 11000)")
     expect(java).toContain('Microphone permission is required')
