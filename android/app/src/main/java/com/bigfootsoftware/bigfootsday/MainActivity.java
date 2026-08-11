@@ -128,12 +128,14 @@ public class MainActivity extends BridgeActivity {
             if (getBridge() == null || getBridge().getWebView() == null) return;
             WebView webView = getBridge().getWebView();
             webView.setVisibility(View.VISIBLE);
+            webView.setAlpha(1f);
             webView.setBackgroundColor(Color.rgb(8, 54, 68));
             webView.bringToFront();
+            webView.requestFocus();
             // Keep the mounted page intact. Reload only when the document truly failed;
             // unconditional reloads caused a black transition on some Samsung WebViews.
             webView.evaluateJavascript(
-                "(function(){var shell=document.querySelector('.app,.setup-shell');if(!shell||!document.body||document.body.innerText.trim().length===0)return 'reload';var home=document.querySelector('.brand');if(home)home.click();return 'ok';})()",
+                "(function(){document.documentElement.style.visibility='visible';if(document.body){document.body.style.visibility='visible';document.body.style.opacity='1';}var shell=document.querySelector('.app,.setup-shell');if(!shell||!document.body||document.body.innerText.trim().length===0)return 'reload';var home=document.querySelector('.brand');if(home)home.click();return 'ok';})()",
                 result -> { if (result != null && result.contains("reload")) webView.reload(); }
             );
         });
