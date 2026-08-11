@@ -178,21 +178,31 @@ public class MainActivityRegressionTest {
             completeSetup(scenario);
 
             assertTrue(waitForJavascript(scenario, "document.querySelector('[data-testid=lesson-card]').dataset.lesson === '1'", "true"));
-            assertTrue("Lesson 1 must have a skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
+            assertEquals("true", evaluate(scenario, "window.__bigfootVoiceTestResult={text:'What can you do?',error:''};true"));
+            assertTrue("Lesson 1 voice practice must run", clickSelector(scenario, "[data-testid=lesson-primary]"));
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 2: Use your list')", "true"));
 
+            assertEquals(
+                "true",
+                evaluate(
+                    scenario,
+                    "window.__tutorialPageFailure=false;window.__tutorialObserver=new MutationObserver(function(){var home=document.querySelector('.home-page');var assistant=document.querySelector('.assistant-page');var empty=!document.body||document.body.innerText.trim().length<30;if(!home||assistant||empty)window.__tutorialPageFailure=true;});window.__tutorialObserver.observe(document.getElementById('root'),{childList:true,subtree:true});true"
+                )
+            );
+
             assertTrue("Lesson 2 practice must run", clickSelector(scenario, "[data-testid=lesson-primary]"));
-            assertTrue("Lesson 2 must return home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 3: Save a note')", "true"));
+            assertTrue("Lesson 2 must stay home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 3: Save a note') && Boolean(document.querySelector('.home-page'))", "true"));
             assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('drink a glass of water')", "true"));
 
             assertTrue("Lesson 3 practice must run", clickSelector(scenario, "[data-testid=lesson-primary]"));
-            assertTrue("Lesson 3 must return home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 4: Find Camera & Video')", "true"));
+            assertTrue("Lesson 3 must stay home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 4: Find Camera & Video') && Boolean(document.querySelector('.home-page'))", "true"));
             assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('I am learning to use my assistant')", "true"));
 
             assertTrue("Lesson 4 must advance after the customer finds the controls", clickSelector(scenario, "[data-testid=lesson-primary]"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 5: Get detailed help')", "true"));
-            assertTrue("Lesson 5 must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.16 Your Day')", "true"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 5: Find More Help') && Boolean(document.querySelector('.home-page'))", "true"));
+            assertTrue("Lesson 5 practice must stay inside the tutorial", clickSelector(scenario, "[data-testid=lesson-primary]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.17 Tutorial Fix') && Boolean(document.querySelector('.home-page'))", "true"));
+            assertEquals("Tutorial must never leave Today during Lessons 2 through 5", "false", evaluate(scenario, "window.__tutorialObserver.disconnect();window.__tutorialPageFailure"));
             assertTrue("The Home tutorial must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]'))", "true"));
             assertHealthyBigfootPage(scenario);
@@ -281,6 +291,18 @@ public class MainActivityRegressionTest {
                 "Returning from an Android screen must place the simple Today dashboard back on top",
                 waitForJavascript(scenario, "Boolean(document.querySelector('.home-page')) && document.body.innerText.includes('BUBBA IS READY')", "true")
             );
+            assertHealthyBigfootPage(scenario);
+        }
+    }
+
+    @Test
+    public void k_customerCanExitTheTutorialImmediately() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            assertTrue("Every lesson must show an Exit Tutorial control", clickSelector(scenario, "[data-testid=lesson-exit]"));
+            assertTrue("Exit Tutorial must reveal the usable Today dashboard", waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]')) && Boolean(document.querySelector('[data-testid=camera-button]')) && Boolean(document.querySelector('[data-testid=call-button]'))", "true"));
             assertHealthyBigfootPage(scenario);
         }
     }
