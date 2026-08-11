@@ -1,4 +1,4 @@
-export type Section = 'home' | 'assistant' | 'email' | 'tasks' | 'people' | 'notes' | 'settings'
+export type Section = 'home' | 'assistant' | 'email' | 'tasks' | 'calendar' | 'people' | 'notes' | 'settings'
 
 export type EmailMessage = {
   id: string
@@ -20,6 +20,14 @@ export type Task = {
   important: boolean
   updatedAt: string
   deleted?: boolean
+}
+
+export type GoogleTask = {
+  id: string
+  title: string
+  due?: string
+  status: 'needsAction' | 'completed'
+  updated?: string
 }
 
 export type Person = {
@@ -48,6 +56,7 @@ export type Preferences = {
   apiBase: string
   companionToken: string
   autoSync: boolean
+  taskSource: 'phone' | 'google'
   setupComplete: boolean
   learningStep: number
 }

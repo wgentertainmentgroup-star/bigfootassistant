@@ -25,6 +25,7 @@ export const defaultState: AppState = {
     apiBase: serviceBase,
     companionToken: appToken,
     autoSync: Boolean(serviceBase),
+    taskSource: 'phone',
     setupComplete: false,
     learningStep: 0,
   },

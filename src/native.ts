@@ -16,8 +16,11 @@ type CallAssistant = {
   openDialer(options: { phone: string }): Promise<{ opened: boolean }>
   openTextMessage(options: { phone: string; body: string }): Promise<{ opened: boolean }>
   openPhoneHome(): Promise<{ opened: boolean }>
+  openCalendar(): Promise<{ opened: boolean }>
+  addCalendarEvent(options: { title: string; startTime: number; endTime: number; guests: string[] }): Promise<{ opened: boolean }>
   openDeviceSettings(): Promise<{ opened: boolean }>
   requestCallerIdAccess(): Promise<{ granted: boolean }>
+  importPhoneContacts(): Promise<{ granted: boolean; people: Array<{ name: string; phone: string }> }>
   getLastCaller(): Promise<{ number: string; name: string; time: number }>
   setKnownPeople(options: { people: Array<{ name: string; phone: string }> }): Promise<void>
   addListener(eventName: 'voiceState', listener: (event: NativeVoiceState) => void): Promise<PluginListenerHandle>
@@ -29,6 +32,8 @@ export const isAndroid = () => Capacitor.getPlatform() === 'android'
 export const isAndroidDevice = () => isAndroid() || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent))
 
 export async function requestHomeShortcut() {
+  const injected = (window as Window & { __bigfootHomeShortcutTestResult?: boolean }).__bigfootHomeShortcutTestResult
+  if (typeof injected === 'boolean') return injected
   if (!isAndroid()) return false
   try { return (await CallAssistantPlugin.requestHomeShortcut()).requested } catch { return false }
 }
@@ -88,11 +93,19 @@ export const openVideoCamera = () => openNativeAction(() => CallAssistantPlugin.
 export const openDialer = (phone = '') => openNativeAction(() => CallAssistantPlugin.openDialer({ phone }))
 export const openTextMessage = (phone = '', body = '') => openNativeAction(() => CallAssistantPlugin.openTextMessage({ phone, body }))
 export const openPhoneHome = () => openNativeAction(() => CallAssistantPlugin.openPhoneHome())
+export const openCalendar = () => openNativeAction(() => CallAssistantPlugin.openCalendar())
+export const addCalendarEvent = (title: string, startTime: number, endTime: number, guests: string[] = []) =>
+  openNativeAction(() => CallAssistantPlugin.addCalendarEvent({ title, startTime, endTime, guests }))
 export const openDeviceSettings = () => openNativeAction(() => CallAssistantPlugin.openDeviceSettings())
 
 export async function requestCallerIdAccess() {
   if (!isAndroid()) return false
   try { return (await CallAssistantPlugin.requestCallerIdAccess()).granted } catch { return false }
+}
+
+export async function importPhoneContacts() {
+  if (!isAndroid()) return { granted: false, people: [] as Array<{ name: string; phone: string }> }
+  try { return await CallAssistantPlugin.importPhoneContacts() } catch { return { granted: false, people: [] } }
 }
 
 export async function getLastCaller() {

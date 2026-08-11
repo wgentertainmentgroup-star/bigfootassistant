@@ -214,9 +214,12 @@ public class MainActivityRegressionTest {
             assertTrue("Lesson 4 must advance after the customer finds the controls", clickSelector(scenario, "[data-testid=lesson-primary]"));
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 5: Find More Help') && Boolean(document.querySelector('.home-page'))", "true"));
             assertTrue("Lesson 5 practice must stay inside the tutorial", clickSelector(scenario, "[data-testid=lesson-primary]"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.18 Senior Tested') && Boolean(document.querySelector('.home-page'))", "true"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Put Bigfoot on Home') && Boolean(document.querySelector('.home-page'))", "true"));
             assertEquals("Tutorial must never leave Today during Lessons 2 through 5", "false", evaluate(scenario, "window.__tutorialObserver.disconnect();window.__tutorialPageFailure"));
-            assertTrue("The Home tutorial must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
+            assertEquals("true", evaluate(scenario, "window.__bigfootHomeShortcutTestResult=true;true"));
+            assertTrue("The icon lesson must request Home placement before leaving the app", clickSelector(scenario, "[data-testid=lesson-primary]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 7: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.19 Google Choice') && Boolean(document.querySelector('.home-page'))", "true"));
+            assertTrue("The final Home tutorial must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]'))", "true"));
             assertHealthyBigfootPage(scenario);
         }
@@ -234,14 +237,22 @@ public class MainActivityRegressionTest {
             assertTrue("Settings must not be hidden without a visible replacement", waitForJavascript(scenario, "getComputedStyle(document.querySelector('[data-testid=nav-settings]')).display==='none' && getComputedStyle(document.querySelector('[data-testid=nav-more]')).display!=='none'", "true"));
 
             assertTrue("An older customer must be able to open the visible More menu", clickSelector(scenario, "[data-testid=nav-more]"));
-            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=more-page]')) && Boolean(document.querySelector('[data-testid=more-notes]')) && Boolean(document.querySelector('[data-testid=more-settings]')) && Boolean(document.querySelector('[data-testid=more-setup]')) && Boolean(document.querySelector('[data-testid=more-phone-home]'))", "true"));
-            assertTrue("Settings must be reachable through the visible More menu", clickSelector(scenario, "[data-testid=more-settings]"));
-            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Easy to see & hear')", "true"));
+            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=more-page]')) && Boolean(document.querySelector('[data-testid=more-calendar]')) && Boolean(document.querySelector('[data-testid=more-notes]')) && Boolean(document.querySelector('[data-testid=more-settings]')) && Boolean(document.querySelector('[data-testid=more-setup]')) && Boolean(document.querySelector('[data-testid=more-phone-home]'))", "true"));
+            assertTrue("Calendar must be easy to find through More", clickSelector(scenario, "[data-testid=more-calendar]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Review in my calendar') && document.body.innerText.includes('Open my calendar')", "true"));
             assertTrue(clickSelector(scenario, "[data-testid=nav-home]"));
 
             assertTrue(clickByText(scenario, "My List"));
+            assertTrue("Phone tasks must work without Google", waitForJavascript(scenario, "document.body.innerText.includes('This Phone') && document.body.innerText.includes('Google Tasks')", "true"));
             setFieldAndSubmit(scenario, "Example: Call the doctor", "End-to-end doctor task", ".add-form");
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('End-to-end doctor task')", "true"));
+
+            assertTrue(clickByText(scenario, "People"));
+            assertTrue("Phonebook import must be prominent", waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=import-phonebook]')) && document.body.innerText.includes('Import from Phonebook')", "true"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-more]"));
+            assertTrue("Settings must be reachable through the visible More menu", clickSelector(scenario, "[data-testid=more-settings]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Easy to see & hear')", "true"));
+            assertTrue(clickSelector(scenario, "[data-testid=nav-home]"));
 
             assertTrue(clickByText(scenario, "People"));
             setField(scenario, "Jane Smith", "Test Helper");

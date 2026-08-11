@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.18 senior acceptance gate: a first-time customer must reach and recover every feature.
+# v0.19 Google choice gate: phone-only features remain complete while Google stays optional.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.18-Senior-Acceptance.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.19-Google-Choice.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.18-senior-acceptance \
-            Bigfoots-Day-v0.18-Senior-Acceptance.apk \
+          gh release create v0.19-google-choice \
+            Bigfoots-Day-v0.19-Google-Choice.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.18 — Senior Acceptance" \
-            --notes "Final older-customer acceptance build for Samsung Z Fold5. A visible More button now keeps Notes, Settings, setup help, and Phone Home reachable on the real phone layout. Blank forms explain what to do, calls and removals require confirmation, feedback stays visible longer, text and touch targets are larger, and failed voice setup links directly to phone settings. Android tests walk all 11 setup screens, every tutorial lesson, repeated voice success/failure and native recovery, visible mobile navigation, mistaken input, canceled removal, persisted daily data, Phone Home return, and smart-glasses camera keys. Installs separately as Bigfoot v0.18 Senior Tested."
+            --title "Bigfoot's Day v0.19 — Google Choice" \
+            --notes "Samsung Z Fold5 test build for older customers. Phone tasks and the installed phone calendar work without a Google account. An optional Google connection adds Gmail, Google Tasks, and Google Calendar. Bubba can create spoken tasks and prepare calendar events or invitations for review before saving. Setup now walks through microphone, notifications, phonebook access, Google choice, and a two-step Samsung Home icon lesson. The compact header respects Android's carrier and Wi-Fi status area. Android regression tests cover all setup screens, all seven lessons, voice recovery, calendar and task discovery, phonebook import discovery, persisted daily data, and visible senior-friendly navigation. Installs separately as Bigfoot v0.19 Google Choice."

@@ -133,7 +133,7 @@ async function googleConnectorTools() {
 function googleAuthUrl() {
   if (!GOOGLE_CLIENT_ID || !TOKEN_SECRET) throw new Error('Google OAuth is not configured')
   const state = crypto.randomBytes(24).toString('hex'); googleStates.add(state)
-  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: GOOGLE_REDIRECT_URI, response_type: 'code', access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, scope: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/calendar'].join(' ') })
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: GOOGLE_REDIRECT_URI, response_type: 'code', access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, scope: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'].join(' ') })
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
@@ -186,6 +186,39 @@ async function gmailInbox() {
     return { id: message.id, threadId: message.threadId, ...headers, snippet: message.snippet || '', unread: (message.labelIds || []).includes('UNREAD') }
   }))
   return messages
+}
+
+async function googleTasksRequest(pathname, options = {}) {
+  const token = await getGoogleAccessToken()
+  const r = await fetch(`https://tasks.googleapis.com/tasks/v1${pathname}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
+  })
+  if (!r.ok) throw new Error(`Google Tasks returned ${r.status}`)
+  return r.status === 204 ? null : r.json()
+}
+
+async function googleTasksList() {
+  const result = await googleTasksRequest('/lists/@default/tasks?showCompleted=true&showDeleted=false&showHidden=false&maxResults=100')
+  return (result?.items || []).map(task => ({ id: task.id, title: task.title || '(Untitled task)', due: task.due || '', status: task.status === 'completed' ? 'completed' : 'needsAction', updated: task.updated || '' }))
+}
+
+async function createGoogleTask(payload) {
+  const title = String(payload?.title || '').trim()
+  if (!title || title.length > 1024) throw new Error('Task title is missing or too long')
+  const value = { title }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(payload?.due || ''))) value.due = `${payload.due}T00:00:00.000Z`
+  return googleTasksRequest('/lists/@default/tasks', { method: 'POST', body: JSON.stringify(value) })
+}
+
+async function updateGoogleTask(payload) {
+  const id = encodeURIComponent(String(payload?.id || ''))
+  if (!id) throw new Error('Task ID is missing')
+  const current = await googleTasksRequest(`/lists/@default/tasks/${id}`)
+  const value = { ...current, status: payload?.completed ? 'completed' : 'needsAction' }
+  if (payload?.completed) value.completed = new Date().toISOString()
+  else delete value.completed
+  return googleTasksRequest(`/lists/@default/tasks/${id}`, { method: 'PUT', body: JSON.stringify(value) })
 }
 
 async function suggestEmailReply(payload) {
@@ -269,6 +302,18 @@ const server = http.createServer(async (req, res) => {
   }
   if (requestUrl.pathname === '/api/google/status' && req.method === 'GET') {
     try { const profile = await googleProfile(); return json(res, 200, { connected: true, email: profile.email || '' }) } catch { return json(res, 200, { connected: false }) }
+  }
+  if (requestUrl.pathname === '/api/google/tasks' && req.method === 'GET') {
+    try { return json(res, 200, { tasks: await googleTasksList() }) }
+    catch (error) { return json(res, 503, { error: error instanceof Error ? error.message : 'Google Tasks unavailable' }) }
+  }
+  if (requestUrl.pathname === '/api/google/tasks' && req.method === 'POST') {
+    try { return json(res, 200, { task: await createGoogleTask(await body(req)) }) }
+    catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Google Task could not be added' }) }
+  }
+  if (requestUrl.pathname === '/api/google/tasks/update' && req.method === 'POST') {
+    try { return json(res, 200, { task: await updateGoogleTask(await body(req)) }) }
+    catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Google Task could not be updated' }) }
   }
   if (requestUrl.pathname === '/api/mail/inbox' && req.method === 'GET') {
     try { return json(res, 200, { messages: await gmailInbox() }) }
