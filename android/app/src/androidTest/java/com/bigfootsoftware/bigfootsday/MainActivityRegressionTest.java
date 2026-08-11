@@ -61,6 +61,13 @@ public class MainActivityRegressionTest {
                 grantMicrophonePermission();
             }
 
+            // Some permission controllers report the Allow click before the package
+            // manager has committed it. Retry the same grant through Android itself
+            // before judging the app's recovery path.
+            if (!waitForMicrophonePermission()) {
+                device.pressBack();
+                grantMicrophonePermission();
+            }
             assertTrue(
                 "Microphone access must be granted before the permission-recovery journey continues",
                 waitForMicrophonePermission()
@@ -158,7 +165,13 @@ public class MainActivityRegressionTest {
             scenario.onActivity(activity -> activity.showVoiceSafetyPanel(() -> {}));
 
             UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
-            UiObject2 stop = device.wait(Until.findObject(By.text("STOP AND RETURN")), 5000L);
+            UiObject2 stop = device.wait(
+                Until.findObject(By.desc("Stop Bubba voice and return to the lesson")),
+                15000L
+            );
+            if (stop == null) {
+                stop = device.wait(Until.findObject(By.text("STOP AND RETURN")), 10000L);
+            }
             assertNotNull("A native Stop and Return button must remain available above the WebView", stop);
             stop.click();
             device.waitForIdle();
@@ -386,10 +399,17 @@ public class MainActivityRegressionTest {
         try {
             InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(targetPackage(), Manifest.permission.RECORD_AUDIO);
         } catch (Exception ignored) {}
+        if (InstrumentationRegistry.getInstrumentation().getTargetContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            try {
+                UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).executeShellCommand(
+                    "pm grant " + targetPackage() + " " + Manifest.permission.RECORD_AUDIO
+                );
+            } catch (Exception ignored) {}
+        }
     }
 
     private boolean waitForMicrophonePermission() throws InterruptedException {
-        for (int attempt = 0; attempt < 20; attempt++) {
+        for (int attempt = 0; attempt < 40; attempt++) {
             if (InstrumentationRegistry.getInstrumentation().getTargetContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 return true;
             }
