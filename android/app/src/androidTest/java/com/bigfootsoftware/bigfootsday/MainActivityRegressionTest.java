@@ -72,7 +72,7 @@ public class MainActivityRegressionTest {
                 "Microphone access must be granted before the permission-recovery journey continues",
                 waitForMicrophonePermission()
             );
-            if ("true".equals(evaluate(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')"))) {
+            if ("true".equals(evaluate(scenario, "Boolean(document.querySelector('.home-page [data-testid=lesson-card][data-lesson=\"1\"]'))"))) {
                 assertTrue("Voice must be retryable after microphone permission is granted", clickByText(scenario, "Practice talking"));
             }
 
@@ -80,7 +80,7 @@ public class MainActivityRegressionTest {
                 "After Android grants microphone access, Lesson 1 must remain visible instead of changing to a dark page",
                 waitForJavascript(
                     scenario,
-                    "document.body.innerText.includes('Lesson 1: Talk to Bubba') && !document.querySelector('.assistant-page')",
+                    "Boolean(document.querySelector('.home-page [data-testid=lesson-card][data-lesson=\"1\"]')) && !document.querySelector('.assistant-page')",
                     "true"
                 )
             );
@@ -92,7 +92,7 @@ public class MainActivityRegressionTest {
             }
             assertTrue(
                 "If the emulator has no microphone input, Bigfoot must return to Lesson 1 instead of getting stuck",
-                waitForJavascript(scenario, "document.body.innerText.includes('Lesson 1: Talk to Bubba')", "true")
+                waitForJavascript(scenario, "Boolean(document.querySelector('.home-page [data-testid=lesson-card][data-lesson=\"1\"]'))", "true")
             );
             assertHealthyBigfootPage(scenario);
             assertEquals("Returning from microphone permission must restore Bigfoot", Lifecycle.State.RESUMED, scenario.getState());
