@@ -15,6 +15,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.getcapacitor.BridgeActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 public class MainActivity extends BridgeActivity {
     private LinearLayout voiceSafetyPanel;
@@ -23,6 +27,16 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(CallAssistantPlugin.class);
         super.onCreate(savedInstanceState);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        View content = findViewById(android.R.id.content);
+        ViewCompat.setOnApplyWindowInsetsListener(content, (view, windowInsets) -> {
+            Insets safe = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(content);
         // A visible teal fallback makes a WebView or speech-service failure obvious
         // and prevents the user from ever being stranded on a featureless black page.
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(8, 54, 68)));

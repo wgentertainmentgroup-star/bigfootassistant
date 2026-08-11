@@ -1,16 +1,16 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultState, loadState, saveState } from './storage'
-import { addVoiceStateListener, cancelVoiceInput, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openDialer, openMapSearch, openPhoneHome, openTextMessage, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
+import { addCalendarEvent, addVoiceStateListener, cancelVoiceInput, getLastCaller, importPhoneContacts, isAndroidDevice, openCalendar, openCamera, openChatGPT, openDeviceSettings, openDialer, openMapSearch, openPhoneHome, openTextMessage, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
-import type { AppState, EmailMessage, Person, Section, Task } from './types'
+import type { AppState, EmailMessage, GoogleTask, Person, Section, Task } from './types'
 import brandLogo from './assets/bigfoot-software-logo.png'
 import brandMark from './assets/bigfoot-software-mark.png'
 
-const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
-const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
+const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', calendar: '▦', people: '☎', notes: '▤', settings: '⚙' }
+const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', calendar: 'Calendar', people: 'People', notes: 'Notes', settings: 'Settings' }
 const setupMarker = 'bigfoots-day-easy-setup-v0140'
-const appVersion = 'v0.18 SENIOR ACCEPTANCE'
+const appVersion = 'v0.19 GOOGLE CHOICE'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -145,6 +145,12 @@ function App() {
     return openPhoneTool(openPhoneHome, 'The phone Home screen')
   }
 
+  async function installHomeIcon() {
+    const requested = await requestHomeShortcut()
+    notify(requested ? 'Samsung is asking to add the icon. Tap Add. Then return here for the final Home test.' : 'Open Apps, press and hold Bigfoot v0.19 Google Choice, then tap Add to Home.')
+    return requested
+  }
+
   async function askAssistant(message: string) {
     const text = message.trim()
     if (!text) return
@@ -180,6 +186,16 @@ function App() {
     if (action.type === 'video') opened = await openVideoCamera()
     if (action.type === 'dialer') opened = await openDialer()
     if (action.type === 'text') opened = await openTextMessage()
+    if (action.type === 'calendar') opened = await addCalendarEvent(action.title, action.startTime, action.endTime, action.guests)
+    if (action.type === 'calendar-open') opened = await openCalendar()
+    if (action.type === 'google-task') {
+      try {
+        const base = getCompanionBase(stateRef.current.preferences.apiBase)
+        const response = await fetch(`${base}/api/google/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Bigfoot-Token': stateRef.current.preferences.companionToken }, body: JSON.stringify({ title: action.title, due: action.due }) })
+        opened = response.ok
+        notify(opened ? `Added “${action.title}” to Google Tasks.` : 'Google Tasks could not add that. Your phone list is still available.')
+      } catch { opened = false }
+    }
     if (action.type === 'settings') opened = await openDeviceSettings()
     if (action.type === 'chatgpt') await launchChatGPT()
     if (action.type === 'call') {
@@ -315,10 +331,11 @@ function App() {
 
       <main>
         {showMobileMore ? <MorePage hasEmail={Boolean(state.preferences.apiBase.trim())} go={go} goPhoneHome={goToPhoneHome} runSetup={() => setShowSetup(true)} /> : <>
-          {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={go} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} practiceTask={practiceLessonTask} practiceNote={practiceLessonNote} openChatGPT={launchChatGPT} openCamera={() => openPhoneTool(openCamera, 'Camera')} openVideo={() => openPhoneTool(openVideoCamera, 'Video camera')} openPhone={() => openPhoneTool(openDialer, 'Phone dialer')} openTexts={() => openPhoneTool(openTextMessage, 'Text messages')} openPhoneHome={goToPhoneHome} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(6, s.preferences.learningStep + 1) } }))} finishLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: 6 } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+          {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={go} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} practiceTask={practiceLessonTask} practiceNote={practiceLessonNote} openChatGPT={launchChatGPT} openCamera={() => openPhoneTool(openCamera, 'Camera')} openVideo={() => openPhoneTool(openVideoCamera, 'Video camera')} openPhone={() => openPhoneTool(openDialer, 'Phone dialer')} openTexts={() => openPhoneTool(openTextMessage, 'Text messages')} addHomeIcon={installHomeIcon} openPhoneHome={goToPhoneHome} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(7, s.preferences.learningStep + 1) } }))} finishLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: 7 } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
           {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} goHome={() => go('home')} />}
           {section === 'email' && <Email state={state} notify={notify} />}
-          {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
+          {section === 'tasks' && <Tasks state={state} onChange={setState} notify={notify} />}
+          {section === 'calendar' && <CalendarPage state={state} notify={notify} />}
           {section === 'people' && <People people={state.people} onChange={people => patch({ people })} notify={notify} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
           {section === 'notes' && <Notes notes={state.notes} onChange={notes => patch({ notes })} notify={notify} />}
           {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onAddHomeShortcut={async () => notify(await requestHomeShortcut() ? 'Samsung opened the Add to Home screen request.' : 'Open Apps, press and hold your app icon, then tap Add to Home.')} onReset={() => { if (!window.confirm('Start over and erase your lists, people, notes, and settings from this phone? Tap Cancel to keep everything.')) return; setState(defaultState); localStorage.removeItem(setupMarker); setShowSetup(true) }} />}
@@ -346,11 +363,12 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   const [voiceTest, setVoiceTest] = useState<{ status: 'idle' | 'listening' | 'passed' | 'failed'; text: string }>({ status: 'idle', text: '' })
   const [reminderStatus, setReminderStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
   const [callerStatus, setCallerStatus] = useState<'idle' | 'granted' | 'not-granted'>('idle')
+  const [phonebookStatus, setPhonebookStatus] = useState<'idle' | 'imported' | 'not-granted'>('idle')
   const [googleStatus, setGoogleStatus] = useState<'idle' | 'connected' | 'not-connected'>('idle')
   const p = state.preferences
   const rootClass = `${p.largeText ? 'large-text' : ''} ${p.highContrast ? 'high-contrast' : ''}`
   const setPref = (key: keyof typeof p, value: string | boolean) => onChange({ ...state, preferences: { ...p, [key]: value } })
-  const stepNames = ['Welcome', 'About you', 'Text size', 'Voice speed', 'Voice test', 'Reminders', 'Caller ID', 'Trusted helper', 'Connections', 'Learning', 'Ready']
+  const stepNames = ['Welcome', 'About you', 'Text size', 'Voice speed', 'Voice test', 'Reminders', 'Caller ID', 'Phonebook & helper', 'Connections', 'Learning', 'Ready']
   const readCopy = [
     "Welcome. I will walk you through your setup one simple step at a time. You can go back, or do optional steps later.",
     `Let's make this personal. Your name is ${p.userName || 'not entered yet'}, and your assistant is named ${p.assistantName || 'Bubba'}.`,
@@ -359,8 +377,8 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
     `Now we will test the microphone and speaker. Tap Test my voice, say hello ${p.assistantName || 'Bubba'}, and listen for the reply.`,
     'Your assistant can tell you when something on your list needs attention. Android will ask for permission before notifications are turned on.',
     'Your caller ID can announce who is calling when the phone recognizes the number. Android will ask you to approve caller identification and contacts access.',
-    'You can save one trusted helper for a large call button on the Today screen. Your assistant will always ask you to confirm before opening the phone call.',
-    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Bubba'} can help with Gmail and your calendar. Your app will never ask you to type your Google password into it.` : 'Bubba is ready for everyday help. If you need a more detailed answer, tap More Help and continue speaking.',
+    'You can import the names and phone numbers already saved in your phonebook, then choose one trusted helper. Android will ask first. You can say no and enter people by hand.',
+    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Bubba'} can help with Gmail, Google Tasks, and Google Calendar. Google will show the permissions before you approve them.` : 'Your phone list and phone calendar work without Google. Google services can be connected later if you want them.',
     'You will learn one skill at a time: talking to Bubba, managing your list, saving notes, using reminders and caller identification, and opening ChatGPT for more detailed help.',
     `Setup is finished. ${p.assistantName || 'Bubba'} is ready to help. You can run this setup guide again any time from Settings.`,
   ]
@@ -387,6 +405,16 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
     setCallerStatus(granted ? 'granted' : 'not-granted')
   }
 
+  async function importSetupPhonebook() {
+    const result = await importPhoneContacts()
+    if (!result.granted) { setPhonebookStatus('not-granted'); return }
+    const existing = new Set(state.people.filter(person => !person.deleted).map(person => `${person.name.toLowerCase()}\u0000${normalizePhone(person.phone)}`))
+    const stamp = new Date().toISOString()
+    const added = result.people.filter(person => !existing.has(`${person.name.toLowerCase()}\u0000${normalizePhone(person.phone)}`)).map(person => ({ id: uid(), name: person.name, phone: person.phone, relationship: 'Phonebook', favorite: false, updatedAt: stamp }))
+    onChange({ ...state, people: [...added, ...state.people] })
+    setPhonebookStatus('imported')
+  }
+
   async function connectGoogle() {
     const base = p.apiBase.trim().replace(/\/$/, '')
     if (!base) { setGoogleStatus('not-connected'); return }
@@ -400,7 +428,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.18</span></header>
+    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.19</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
@@ -418,13 +446,13 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
 
         {step === 6 && <div className="setup-content"><span className="eyebrow">CALLER ID</span><h1>Let your assistant tell you who is calling.</h1><p className="setup-lead">When a call comes in, your assistant can announce the person’s name when it recognizes the number.</p><div className="setup-permission"><span>☎</span><div><b>You may see two Android questions.</b><p>Choose your assistant app for caller identification, then allow contacts so names can be recognized.</p></div></div><button className="setup-action" onClick={() => void enableCallerId()}>Turn on caller ID</button>{callerStatus === 'granted' && <div className="setup-success">✓ Caller identification is turned on.</div>}{callerStatus === 'not-granted' && <div className="setup-later">Caller ID is not on yet. No problem — you can do this later.</div>}</div>}
 
-        {step === 7 && <div className="setup-content"><span className="eyebrow">TRUSTED HELPER</span><h1>Who should be easy to call?</h1><p className="setup-lead">This is optional. Add one family member, friend, or caregiver for the large <strong>Call My Helper</strong> button.</p><label className="setup-label">Helper’s name<input value={p.trustedHelperName} onChange={e => setPref('trustedHelperName', e.target.value)} placeholder="For example: Linda" /></label><label className="setup-label">Helper’s phone number<input type="tel" inputMode="tel" value={p.trustedHelperPhone} onChange={e => setPref('trustedHelperPhone', e.target.value)} placeholder="Phone number" /></label><div className="setup-reassurance compact">✓ The app will always show the name and ask you to confirm before opening a call.<br />✓ This button does not contact emergency services.</div></div>}
+        {step === 7 && <div className="setup-content"><span className="eyebrow">PHONEBOOK & TRUSTED HELPER</span><h1>Bring in people already saved on this phone?</h1><p className="setup-lead">This is optional. Android will ask before your app reads contact names and phone numbers.</p><div className="setup-permission"><span>☎</span><div><b>Tap Allow to import your phonebook.</b><p>Contacts are used for People and caller identification. They are not sent anywhere. Tap Don’t allow if you prefer to enter people by hand.</p></div></div><button className="setup-action" onClick={() => void importSetupPhonebook()}>Import my phonebook</button>{phonebookStatus === 'imported' && <div className="setup-success">✓ Your phonebook was imported. Existing people were not duplicated.</div>}{phonebookStatus === 'not-granted' && <div className="setup-later">Phonebook permission was not granted. That is okay — enter people by hand later.</div>}<h2 className="setup-subhead">Choose one trusted helper — optional</h2><label className="setup-label">Helper’s name<input value={p.trustedHelperName} onChange={e => setPref('trustedHelperName', e.target.value)} placeholder="For example: Linda" /></label><label className="setup-label">Helper’s phone number<input type="tel" inputMode="tel" value={p.trustedHelperPhone} onChange={e => setPref('trustedHelperPhone', e.target.value)} placeholder="Phone number" /></label><div className="setup-reassurance compact">✓ The app always shows the name and asks before opening a call.<br />✓ This button does not contact emergency services.</div></div>}
 
-        {step === 8 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Bubba to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Bubba'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Your app will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to your app.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up your app and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Bubba can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Bubba for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>No technical account setup is needed.</b><p>Your list, notes, timers, calls, camera, Maps, caller ID and voice tools work directly on this phone.</p></div></div><div className="setup-success">✓ Your everyday tools are ready.</div></div>)}
+        {step === 8 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE — OPTIONAL</span><h1>Would you like Gmail, Google Tasks, and Google Calendar?</h1><p className="setup-lead">One connection lets {p.assistantName || 'Bubba'} show important email, use Google Tasks, and help with appointments.</p><div className="setup-permission"><span>G</span><div><b>Google shows every permission before you approve it.</b><p>Choose your account, review Gmail, Tasks, and Calendar, then tap Allow. Google handles your password; your app never sees it.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to your app.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />Keep using the phone list and calendar, then connect later.</div>}<p className="setup-tip">You can skip Google. Your phone list, reminders, calendar, people, notes, and caller ID still work.</p></div> : <div className="setup-content"><span className="eyebrow">GOOGLE IS OPTIONAL</span><h1>Your phone list and calendar are ready without Google.</h1><p className="setup-lead">Tasks stay on this phone and appointments open in your installed calendar. A helper can enable the optional Google connection later.</p><div className="setup-permission"><span>✓</span><div><b>No Google permission is required.</b><p>Voice, lists, reminders, calendar review, phonebook, calls, camera, Maps, and notes work directly on this phone.</p></div></div><div className="setup-success">✓ Your phone-only tools are ready.</div></div>)}
 
-        {step === 9 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then try the everyday tools on Today.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your day</b><small>Use lists, notes, shopping items and reminders.</small></div><div><b>3. Use phone tools</b><small>Set timers and alarms, open maps and the camera.</small></div><div><b>4. People & caller ID</b><small>Keep important people easy to reach.</small></div><div><b>5. More Help</b><small>Open ChatGPT for detailed questions.</small></div><div><b>6. Go Home & come back</b><small>Return to the normal phone screen, then reopen your dashboard.</small></div></div></div>}
+        {step === 9 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then try the everyday tools on Today.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your day</b><small>Use lists, Google Tasks, notes and reminders.</small></div><div><b>3. Use phone tools</b><small>Use voice for calendar events, timers, maps and camera.</small></div><div><b>4. People & caller ID</b><small>Import your phonebook and keep people easy to reach.</small></div><div><b>5. More Help</b><small>Open ChatGPT for detailed questions.</small></div><div><b>6. Add the Home icon</b><small>Ask Samsung to put Bigfoot on Home before leaving the app.</small></div><div><b>7. Go Home & come back</b><small>Test the new icon and return to your dashboard.</small></div></div></div>}
 
-        {step === 10 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Your assistant will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>{p.slowVoice ? 'Slower' : 'Normal'} speaking pace</small></div><div><span>☎</span><b>{p.trustedHelperName && p.trustedHelperPhone ? p.trustedHelperName : 'Can add later'}</b><small>Trusted helper</small></div><div><span>⌂</span><b>App icon is installed</b><small>Add it to Home later from Settings</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
+        {step === 10 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Your assistant will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>{p.slowVoice ? 'Slower' : 'Normal'} speaking pace</small></div><div><span>☎</span><b>{p.trustedHelperName && p.trustedHelperPhone ? p.trustedHelperName : 'Can add later'}</b><small>Trusted helper</small></div><div><span>⌂</span><b>Home icon lesson is ready</b><small>The tutorial adds it before sending you Home</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
 
         <button className="setup-read" onClick={() => speak(readCopy[step], true, p.slowVoice)}>🔊 Read this screen to me</button>
       </section>
@@ -438,6 +466,7 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
 function MorePage({ hasEmail, go, goPhoneHome, runSetup }: { hasEmail: boolean; go: (s: Section) => void; goPhoneHome: () => Promise<boolean>; runSetup: () => void }) {
   return <div className="page more-page" data-testid="more-page"><div className="page-title"><div><span className="eyebrow">MORE CHOICES</span><h1>What would you like?</h1><p>These less-used choices are kept here so the bottom of your screen stays simple.</p></div></div><div className="more-grid">
     {hasEmail && <button data-testid="more-email" onClick={() => go('email')}><span>✉</span><b>Email</b><small>Read important messages and review suggested replies.</small></button>}
+    <button data-testid="more-calendar" onClick={() => go('calendar')}><span>▦</span><b>Calendar</b><small>See dated tasks or add an appointment to your phone calendar.</small></button>
     <button data-testid="more-notes" onClick={() => go('notes')}><span>▤</span><b>Notes</b><small>Save something you do not want to forget.</small></button>
     <button data-testid="more-settings" onClick={() => go('settings')}><span>⚙</span><b>Settings & Help</b><small>Change text, voice, helper, or run setup again.</small></button>
     <button data-testid="more-setup" onClick={runSetup}><span>?</span><b>Walk through setup again</b><small>Start the easy step-by-step guide. Your saved information stays.</small></button>
@@ -445,7 +474,7 @@ function MorePage({ hasEmail, go, goPhoneHome, runSetup }: { hasEmail: boolean; 
   </div></div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, practiceTask, practiceNote, openChatGPT, openCamera, openVideo, openPhone, openTexts, openPhoneHome, callHelper, advanceLearning, finishLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; practiceTask: () => void; practiceNote: () => void; openChatGPT: () => Promise<void>; openCamera: () => Promise<boolean>; openVideo: () => Promise<boolean>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; openPhoneHome: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; finishLearning: () => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, practiceTask, practiceNote, openChatGPT, openCamera, openVideo, openPhone, openTexts, addHomeIcon, openPhoneHome, callHelper, advanceLearning, finishLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; practiceTask: () => void; practiceNote: () => void; openChatGPT: () => Promise<void>; openCamera: () => Promise<boolean>; openVideo: () => Promise<boolean>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; addHomeIcon: () => Promise<boolean>; openPhoneHome: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; finishLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
     { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” Bubba will confirm what was heard and Lesson 2 will appear here. This practice never opens another page.', action: '🎙 Practice talking', run: async () => { const worked = await practiceTalk(); if (worked) advanceLearning() } },
@@ -453,8 +482,9 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, prac
     { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note while this Today screen stays open.', action: '▤ Practice saving a note', run: async () => practiceNote() },
     { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
     { title: 'Lesson 5: Find More Help', copy: 'The More Help button is below the everyday tools. It opens ChatGPT when you choose to use it. This practice stays on Today.', action: '✦ Find More Help', run: async () => { document.querySelector('.chatgpt-quick')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
-    { title: 'Lesson 6: Go Home and come back', copy: 'Tap Try HOME below to open the normal Samsung home screen. To return, find the Bigfoot Software logo labeled “Bigfoot v0.18 Senior Tested” and tap it. Your Today dashboard will be waiting.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
-  ][Math.min(5, state.preferences.learningStep)]
+    { title: 'Lesson 6: Put Bigfoot on Home', copy: 'Tap Add my icon. When Samsung asks, tap Add. The app stays open so you cannot get stranded.', action: '＋ Add my icon', run: async () => { const requested = await addHomeIcon(); if (requested) advanceLearning() } },
+    { title: 'Lesson 7: Go Home and come back', copy: 'Now tap Try HOME. On the Samsung Home screen, tap the Bigfoot Software logo labeled “Bigfoot v0.19 Google Choice” to return.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
+  ][Math.min(6, state.preferences.learningStep)]
   return <div className="page home-page">
     <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div><small className="talk-example">Try saying: “What do I need to do today?”</small></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
     <section className="media-launcher" aria-label="Phone and camera shortcuts">
@@ -463,7 +493,7 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, prac
       <button className="media-button call" data-testid="call-button" onClick={() => void openPhone()}><span>☎</span><div><b>CALL</b><small>Open phone dialer</small></div></button>
       <button className="media-button text" data-testid="text-button" onClick={() => void openTexts()}><span>✉</span><div><b>TEXT</b><small>Open text messages</small></div></button>
     </section>
-    {state.preferences.learningStep < 6 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 6 · You can skip this lesson or exit the tutorial at any time.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button><button className="lesson-exit" data-testid="lesson-exit" onClick={finishLearning}>Exit tutorial and use the app</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
+    {state.preferences.learningStep < 7 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 7 · You can skip this lesson or exit the tutorial at any time.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button><button className="lesson-exit" data-testid="lesson-exit" onClick={finishLearning}>Exit tutorial and use the app</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
@@ -563,13 +593,35 @@ function Email({ state, notify }: { state: AppState; notify: (s: string) => void
   </div>
 }
 
-function Tasks({ tasks, onChange, notify }: { tasks: Task[]; onChange: (t: Task[]) => void; notify: (s: string) => void }) {
+function Tasks({ state, onChange, notify }: { state: AppState; onChange: (s: AppState) => void; notify: (s: string) => void }) {
   const [text, setText] = useState(''); const [due, setDue] = useState(new Date().toISOString().slice(0, 10))
-  const visible = tasks.filter(t => !t.deleted)
-  async function add(e: FormEvent) { e.preventDefault(); if (!text.trim()) { notify('Type what you need to remember, then tap Add to my list.'); return } const task: Task = { id: uid(), text: text.trim(), due, done: false, important: false, updatedAt: new Date().toISOString() }; onChange([task, ...tasks]); setText(''); if (due) { const when = new Date(`${due}T09:00:00`); if (when > new Date()) await scheduleReminder(Number(Date.now().toString().slice(-8)), "Bigfoot's Day", task.text, when) } notify(`Added “${task.text}” to your list.`) }
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">KEEP IT SIMPLE</span><h1>My List</h1><p>One place for the things you don’t want to forget.</p></div></div>
-    <form className="add-form panel" onSubmit={add}><label>What do you need to remember?<input value={text} onChange={e => setText(e.target.value)} placeholder="Example: Call the doctor" /></label><label>When?<input type="date" value={due} onChange={e => setDue(e.target.value)} /></label><button>Add to my list</button></form>
-    <section className="panel list-panel">{visible.length === 0 ? <div className="empty">Your list is empty.</div> : visible.map(t => <div className={`task-row ${t.done ? 'done' : ''}`} key={t.id}><input type="checkbox" aria-label={`Mark ${t.text} ${t.done ? 'not done' : 'done'}`} checked={t.done} onChange={() => onChange(tasks.map(x => x.id === t.id ? { ...x, done: !x.done, updatedAt: new Date().toISOString() } : x))} /><span><b>{t.text}</b><small>{t.due || 'Any time'}</small></span><button className="star" aria-label={`${t.important ? 'Remove important mark from' : 'Mark important'} ${t.text}`} onClick={() => onChange(tasks.map(x => x.id === t.id ? { ...x, important: !x.important, updatedAt: new Date().toISOString() } : x))}>{t.important ? '★' : '☆'}</button><button className="delete" onClick={() => { if (!window.confirm(`Remove “${t.text}” from your list? Tap Cancel to keep it.`)) return; onChange(tasks.map(x => x.id === t.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x)); notify('The item was removed.') }}>Remove</button></div>)}</section>
+  const [googleTasks, setGoogleTasks] = useState<GoogleTask[]>([]); const [loadingGoogle, setLoadingGoogle] = useState(false)
+  const tasks = state.tasks; const visible = tasks.filter(t => !t.deleted); const googleAvailable = Boolean(state.preferences.apiBase.trim()); const useGoogle = googleAvailable && state.preferences.taskSource === 'google'
+  const headers = { 'Content-Type': 'application/json', 'X-Bigfoot-Token': state.preferences.companionToken }
+  async function refreshGoogle() { setLoadingGoogle(true); try { const r = await fetch(`${getCompanionBase(state.preferences.apiBase)}/api/google/tasks`, { headers }); if (!r.ok) throw new Error(); const data = await r.json(); setGoogleTasks(data.tasks || []) } catch { notify('Google Tasks is not connected. You can switch back to This Phone.'); } finally { setLoadingGoogle(false) } }
+  useEffect(() => { if (useGoogle) void refreshGoogle() }, [useGoogle, state.preferences.apiBase, state.preferences.companionToken])
+  function choose(source: 'phone' | 'google') { onChange({ ...state, preferences: { ...state.preferences, taskSource: source } }) }
+  async function add(e: FormEvent) {
+    e.preventDefault(); if (!text.trim()) { notify('Type what you need to remember, then tap Add to my list.'); return }
+    if (useGoogle) { try { const r = await fetch(`${getCompanionBase(state.preferences.apiBase)}/api/google/tasks`, { method: 'POST', headers, body: JSON.stringify({ title: text.trim(), due }) }); if (!r.ok) throw new Error(); notify(`Added “${text.trim()}” to Google Tasks.`); setText(''); await refreshGoogle() } catch { notify('Google Tasks could not add that. Nothing was lost — switch to This Phone to keep using the local list.') } return }
+    const task: Task = { id: uid(), text: text.trim(), due, done: false, important: false, updatedAt: new Date().toISOString() }; onChange({ ...state, tasks: [task, ...tasks] }); setText(''); if (due) { const when = new Date(`${due}T09:00:00`); if (when > new Date()) await scheduleReminder(Number(Date.now().toString().slice(-8)), "Bigfoot's Day", task.text, when) } notify(`Added “${task.text}” to your phone list.`)
+  }
+  async function toggleGoogle(task: GoogleTask) { try { const r = await fetch(`${getCompanionBase(state.preferences.apiBase)}/api/google/tasks/update`, { method: 'POST', headers, body: JSON.stringify({ id: task.id, completed: task.status !== 'completed' }) }); if (!r.ok) throw new Error(); await refreshGoogle() } catch { notify('Google Tasks could not update that item. Please try again.') } }
+  return <div className="page"><div className="page-title"><div><span className="eyebrow">KEEP IT SIMPLE</span><h1>My List</h1><p>Choose Google Tasks or keep everything privately on this phone.</p></div></div>
+    <section className="panel task-source"><h2>Where should tasks be kept?</h2><div><button className={!useGoogle ? 'selected' : ''} onClick={() => choose('phone')}><b>📱 This Phone</b><small>Works without Google or internet.</small></button><button disabled={!googleAvailable} className={useGoogle ? 'selected' : ''} onClick={() => choose('google')}><b>G Google Tasks</b><small>{googleAvailable ? 'Use the connected Google account.' : 'Connect Google in Settings first.'}</small></button></div></section>
+    <form className="add-form panel" onSubmit={add}><label>What do you need to remember?<input value={text} onChange={e => setText(e.target.value)} placeholder="Example: Call the doctor" /></label><label>When?<input type="date" value={due} onChange={e => setDue(e.target.value)} /></label><button>Add to {useGoogle ? 'Google Tasks' : 'my phone list'}</button></form>
+    <section className="panel list-panel">{useGoogle ? loadingGoogle ? <div className="empty">Loading Google Tasks…</div> : googleTasks.length === 0 ? <div className="empty">Your Google Tasks list is empty.</div> : googleTasks.map(t => <div className={`task-row ${t.status === 'completed' ? 'done' : ''}`} key={t.id}><input type="checkbox" checked={t.status === 'completed'} onChange={() => void toggleGoogle(t)} /><span><b>{t.title}</b><small>{t.due ? t.due.slice(0, 10) : 'Any time'} · Google Tasks</small></span></div>) : visible.length === 0 ? <div className="empty">Your phone list is empty.</div> : visible.map(t => <div className={`task-row ${t.done ? 'done' : ''}`} key={t.id}><input type="checkbox" aria-label={`Mark ${t.text} ${t.done ? 'not done' : 'done'}`} checked={t.done} onChange={() => onChange({ ...state, tasks: tasks.map(x => x.id === t.id ? { ...x, done: !x.done, updatedAt: new Date().toISOString() } : x) })} /><span><b>{t.text}</b><small>{t.due || 'Any time'} · This phone</small></span><button className="star" aria-label={`${t.important ? 'Remove important mark from' : 'Mark important'} ${t.text}`} onClick={() => onChange({ ...state, tasks: tasks.map(x => x.id === t.id ? { ...x, important: !x.important, updatedAt: new Date().toISOString() } : x) })}>{t.important ? '★' : '☆'}</button><button className="delete" onClick={() => { if (!window.confirm(`Remove “${t.text}” from your list? Tap Cancel to keep it.`)) return; onChange({ ...state, tasks: tasks.map(x => x.id === t.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x) }); notify('The item was removed.') }}>Remove</button></div>)}</section>
+  </div>
+}
+
+function CalendarPage({ state, notify }: { state: AppState; notify: (s: string) => void }) {
+  const tomorrow = new Date(Date.now() + 86400000); const defaultDate = tomorrow.toISOString().slice(0, 10)
+  const [title, setTitle] = useState(''); const [date, setDate] = useState(defaultDate); const [time, setTime] = useState('10:00'); const [guests, setGuests] = useState('')
+  const dated = state.tasks.filter(t => !t.deleted && t.due).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 12)
+  async function add(e: FormEvent) { e.preventDefault(); if (!title.trim()) { notify('Enter an appointment name first.'); return } const start = new Date(`${date}T${time}:00`); if (Number.isNaN(start.getTime())) { notify('Check the appointment date and time.'); return } const emails = guests.split(/[,;\s]+/).filter(x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)); const opened = await addCalendarEvent(title.trim(), start.getTime(), start.getTime() + 3600000, emails); notify(opened ? 'Your calendar opened. Check the details, choose the account, then tap Save.' : 'The phone calendar could not open.') }
+  return <div className="page calendar-page"><div className="page-title split"><div><span className="eyebrow">APPOINTMENTS</span><h1>Calendar</h1><p>Works with Samsung Calendar, Google Calendar, or any calendar installed on this phone.</p></div><button className="secondary" onClick={() => void openCalendar()}>Open my calendar</button></div>
+    <form className="panel calendar-form" onSubmit={add}><label>Appointment or event<input value={title} onChange={e => setTitle(e.target.value)} placeholder="Example: Doctor appointment" /></label><label>Date<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label><label>Time<input type="time" value={time} onChange={e => setTime(e.target.value)} /></label><label>Invite people by email — optional<input value={guests} onChange={e => setGuests(e.target.value)} placeholder="name@example.com" /></label><button>Review in my calendar</button><p>Your calendar opens before saving. Nothing is sent until you review it and tap Save.</p></form>
+    <section className="panel list-panel"><div className="panel-head"><h2>Dated items from your phone list</h2></div>{dated.length ? dated.map(t => <div className="task-row" key={t.id}><span><b>{t.text}</b><small>{t.due}</small></span></div>) : <div className="empty">No dated tasks yet.</div>}</section>
   </div>
 }
 
@@ -577,7 +629,17 @@ function People({ people, onChange, notify, onCallerAccess }: { people: Person[]
   const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [relationship, setRelationship] = useState('')
   const visible = people.filter(p => !p.deleted)
   function add(e: FormEvent) { e.preventDefault(); if (!name.trim() || !phone.trim()) { notify('Enter both a name and a phone number, then tap Save person.'); return } if (phone.replace(/\D/g, '').length < 7) { notify('That phone number looks too short. Please check it and try again.'); return } const savedName = name.trim(); onChange([{ id: uid(), name: savedName, phone: phone.trim(), relationship: relationship.trim(), favorite: false, updatedAt: new Date().toISOString() }, ...people]); setName(''); setPhone(''); setRelationship(''); notify(`${savedName} was saved.`) }
+  async function importContacts() {
+    const result = await importPhoneContacts()
+    if (!result.granted) { notify('Phonebook permission was not granted. You can still add people by hand.'); return }
+    const existing = new Set(people.filter(p => !p.deleted).map(p => `${p.name.toLowerCase()}\u0000${normalizePhone(p.phone)}`))
+    const stamp = new Date().toISOString()
+    const added = result.people.filter(p => !existing.has(`${p.name.toLowerCase()}\u0000${normalizePhone(p.phone)}`)).map(p => ({ id: uid(), name: p.name, phone: p.phone, relationship: 'Phonebook', favorite: false, updatedAt: stamp }))
+    onChange([...added, ...people])
+    notify(added.length ? `Imported ${added.length} people from your phonebook.` : 'Your phonebook is already up to date.')
+  }
   return <div className="page"><div className="page-title split"><div><span className="eyebrow">YOUR PEOPLE</span><h1>People</h1><p>Keep important people easy to reach.</p></div><button className="secondary" onClick={onCallerAccess}>Turn on caller ID</button></div>
+    <section className="panel phonebook-import"><div><h2>Bring in your phonebook</h2><p>Import names and phone numbers already saved on this phone. Duplicates are skipped.</p></div><button data-testid="import-phonebook" onClick={() => void importContacts()}>Import from Phonebook</button></section>
     <form className="add-form panel" onSubmit={add}><label>Name<input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" /></label><label>Phone<input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="(555) 123-4567" /></label><label>Who are they?<input value={relationship} onChange={e => setRelationship(e.target.value)} placeholder="Daughter, doctor…" /></label><button>Save person</button></form>
     <div className="people-grid">{visible.length === 0 ? <div className="panel empty">No people saved yet. Add someone above.</div> : visible.map(p => <div className="person-card panel" key={p.id}><div className="avatar">{p.name.slice(0, 1).toUpperCase()}</div><div><h3>{p.name}</h3><p>{p.relationship || 'Contact'}</p><span className="phone-number">{p.phone}</span></div><button className="call" onClick={() => placeConfirmedCall(p.name, p.phone)}>☎ Call</button><button className="delete" onClick={() => { if (!window.confirm(`Remove ${p.name} from People? Tap Cancel to keep this person.`)) return; onChange(people.map(x => x.id === p.id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x)); notify(`${p.name} was removed.`) }}>Remove</button></div>)}</div>
   </div>
@@ -643,7 +705,7 @@ function GoogleConnection({ apiBase, companionToken, notify }: { apiBase: string
       const timer = window.setInterval(async () => { tries++; await check(); if (tries >= 20) clearInterval(timer) }, 3000)
     } catch { notify('Google connection is not configured on the companion service yet.') }
   }
-  return <section className="panel settings-group google-connect"><h2>Gmail & Google Calendar</h2><p className="hint">Connect once so Bubba can brief you on email and your calendar. Your app never asks for your Google password.</p><div className={`connection-row ${connected ? '' : 'offline'}`}><span className="status-dot" /> {checking ? 'Checking Google…' : connected ? `Connected${email ? ` as ${email}` : ''}` : 'Not connected'}</div><div className="sync-actions">{!connected && <button onClick={() => void connect()}>Connect Google</button>}<button onClick={() => void check()}>Check connection</button></div></section>
+  return <section className="panel settings-group google-connect"><h2>Gmail, Google Tasks & Calendar</h2><p className="hint">Optional. Connect once so Bubba can show email, use Google Tasks, and help with your Google Calendar. Google shows every permission before approval, and your app never asks for your Google password.</p><div className={`connection-row ${connected ? '' : 'offline'}`}><span className="status-dot" /> {checking ? 'Checking Google…' : connected ? `Connected${email ? ` as ${email}` : ''}` : 'Not connected — phone tasks and calendar still work'}</div><div className="sync-actions">{!connected && <button onClick={() => void connect()}>Connect Google</button>}<button onClick={() => void check()}>Check connection</button></div></section>
 }
 
 function Toggle({ label, value, set }: { label: string; value: boolean; set: (v: boolean) => void }) { return <label className="toggle-row"><span>{label}</span><button className={`switch ${value ? 'on' : ''}`} onClick={() => set(!value)} aria-pressed={value}><i /></button></label> }
@@ -660,6 +722,9 @@ export type AssistantAction =
   | { type: 'video' }
   | { type: 'dialer' }
   | { type: 'text' }
+  | { type: 'calendar'; title: string; startTime: number; endTime: number; guests: string[] }
+  | { type: 'calendar-open' }
+  | { type: 'google-task'; title: string; due: string }
   | { type: 'settings' }
   | { type: 'chatgpt' }
   | { type: 'call'; phone: string }
@@ -672,6 +737,18 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
   const stamp = now.toISOString()
   const today = stamp.slice(0, 10)
   const open = state.tasks.filter(t => !t.deleted && !t.done)
+
+  const calendarMatch = text.match(/^(?:please\s+)?(?:schedule|add|create)\s+(?:a\s+|an\s+)?(.+?)\s+(today|tomorrow|on\s+\d{4}-\d{2}-\d{2})\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i)
+  if (calendarMatch) {
+    const day = calendarMatch[2].toLowerCase(); const start = new Date(now)
+    if (day === 'tomorrow') start.setDate(start.getDate() + 1)
+    if (day.startsWith('on ')) { const parsed = new Date(`${day.slice(3)}T12:00:00`); if (!Number.isNaN(parsed.getTime())) start.setFullYear(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()) }
+    let hour = Number(calendarMatch[3]) % 12; if (calendarMatch[5].toLowerCase().startsWith('p')) hour += 12
+    const minute = Number(calendarMatch[4] || 0); start.setHours(hour, minute, 0, 0)
+    const title = calendarMatch[1].replace(/^(?:calendar\s+)?(?:event|appointment|meeting|invite)\s+(?:called|for)\s+/i, '').replace(/\s+(?:and\s+)?invite\s+.+$/i, '').trim()
+    const guests = [...text.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)].map(match => match[0])
+    return { reply: `I’m opening your calendar with ${title} filled in. Review the details and guests, then tap Save.`, action: { type: 'calendar', title, startTime: start.getTime(), endTime: start.getTime() + 3600000, guests } }
+  }
 
   const timerMatch = text.match(/\bset\s+(?:a\s+)?timer(?:\s+for)?\s+(\d+)\s*(second|minute|hour)s?\b/i)
   if (timerMatch) {
@@ -714,6 +791,7 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
   if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?(?:photo )?camera[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera for a picture.', action: { type: 'camera' } }
   if (/^(?:please\s+)?(?:open|show)\s+(?:the\s+)?(?:phone|dialer)[.!?]*$/i.test(text)) return { reply: 'I’m opening the phone dialer.', action: { type: 'dialer' } }
   if (/^(?:please\s+)?(?:open|show)\s+(?:the\s+)?(?:text|texts|messages|text messages)[.!?]*$/i.test(text)) return { reply: 'I’m opening your text messages.', action: { type: 'text' } }
+  if (/^(?:please\s+)?(?:open|show)\s+(?:my\s+|the\s+)?calendar[.!?]*$/i.test(text)) return { reply: 'I’m opening your phone calendar.', action: { type: 'calendar-open' } }
   if (/^(?:please\s+)?open\s+(?:phone\s+|device\s+)?settings[.!?]*$/i.test(text)) return { reply: 'I’m opening your phone settings.', action: { type: 'settings' } }
   if (/^(?:please\s+)?(?:open|continue (?:in|with)|use)\s+(?:the\s+)?chatgpt[.!?]*$/i.test(text)) return { reply: 'I’m opening ChatGPT for more detailed help.', action: { type: 'chatgpt' } }
 
@@ -728,6 +806,7 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
     || text.match(/^(?:please\s+)?(?:remind me to|remember to)\s+(.+)$/i)
   if (addTask?.[1]?.trim()) {
     const taskText = addTask[1].trim().replace(/[.!?]+$/, '')
+    if (state.preferences.taskSource === 'google' && state.preferences.apiBase.trim()) return { reply: `I’ll add ${taskText} to Google Tasks.`, action: { type: 'google-task', title: taskText, due: today } }
     const task: Task = { id: uid(), text: taskText, due: today, done: false, important: false, updatedAt: stamp }
     return { reply: `Done. I added ${taskText} to today’s list.`, changes: { tasks: [task, ...state.tasks] } }
   }

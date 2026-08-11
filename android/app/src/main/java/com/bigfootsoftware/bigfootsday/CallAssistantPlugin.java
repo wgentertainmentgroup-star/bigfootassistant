@@ -6,6 +6,7 @@ import android.app.role.RoleManager;
 import android.media.AudioAttributes;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
@@ -20,10 +21,14 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.provider.MediaStore;
+import android.provider.CalendarContract;
 import android.provider.Settings;
+import android.provider.ContactsContract;
+import androidx.core.content.ContextCompat;
 import androidx.activity.result.ActivityResult;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -450,6 +455,45 @@ public class CallAssistantPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openCalendar(PluginCall call) {
+        JSObject result = new JSObject();
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, CalendarContract.CONTENT_URI.buildUpon().appendPath("time").build());
+            getActivity().startActivity(intent);
+            result.put("opened", true);
+        } catch (Exception error) {
+            result.put("opened", false);
+        }
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void addCalendarEvent(PluginCall call) {
+        JSObject result = new JSObject();
+        try {
+            long startTime = call.getLong("startTime", System.currentTimeMillis());
+            long endTime = call.getLong("endTime", startTime + 60L * 60L * 1000L);
+            Intent intent = new Intent(Intent.ACTION_INSERT)
+                .setData(CalendarContract.Events.CONTENT_URI)
+                .putExtra(CalendarContract.Events.TITLE, call.getString("title", "Bigfoot's Day appointment"))
+                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startTime)
+                .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endTime);
+            JSObject data = call.getData();
+            JSONArray guests = data.optJSONArray("guests");
+            if (guests != null && guests.length() > 0) {
+                String[] addresses = new String[guests.length()];
+                for (int i = 0; i < guests.length(); i++) addresses[i] = guests.optString(i, "");
+                intent.putExtra(Intent.EXTRA_EMAIL, addresses);
+            }
+            getActivity().startActivity(intent);
+            result.put("opened", true);
+        } catch (Exception error) {
+            result.put("opened", false);
+        }
+        call.resolve(result);
+    }
+
+    @PluginMethod
     public void requestCallerIdAccess(PluginCall call) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             requestPermissionForAlias("contacts", call, "contactsResult");
@@ -484,6 +528,56 @@ public class CallAssistantPlugin extends Plugin {
             roleOkay = manager != null && manager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING);
         }
         resolve(call, roleOkay);
+    }
+
+    @PluginMethod
+    public void importPhoneContacts(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissionForAlias("contacts", call, "importContactsResult");
+            return;
+        }
+        resolveImportedContacts(call);
+    }
+
+    @PermissionCallback
+    private void importContactsResult(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            JSObject result = new JSObject();
+            result.put("granted", false);
+            result.put("people", new JSArray());
+            call.resolve(result);
+            return;
+        }
+        resolveImportedContacts(call);
+    }
+
+    private void resolveImportedContacts(PluginCall call) {
+        JSArray people = new JSArray();
+        Set<String> seen = new java.util.HashSet<>();
+        try (Cursor cursor = getContext().getContentResolver().query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            new String[] { ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY, ContactsContract.CommonDataKinds.Phone.NUMBER },
+            null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " COLLATE NOCASE ASC"
+        )) {
+            if (cursor != null) {
+                int nameColumn = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY);
+                int phoneColumn = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+                while (cursor.moveToNext() && people.length() < 500) {
+                    String name = cursor.getString(nameColumn);
+                    String phone = cursor.getString(phoneColumn);
+                    String key = (name == null ? "" : name.trim().toLowerCase(Locale.US)) + "\u0000" + (phone == null ? "" : phone.replaceAll("\\D", ""));
+                    if (name == null || name.trim().isEmpty() || phone == null || phone.trim().isEmpty() || !seen.add(key)) continue;
+                    JSObject person = new JSObject();
+                    person.put("name", name.trim());
+                    person.put("phone", phone.trim());
+                    people.put(person);
+                }
+            }
+        } catch (Exception ignored) {}
+        JSObject result = new JSObject();
+        result.put("granted", true);
+        result.put("people", people);
+        call.resolve(result);
     }
 
     private void resolve(PluginCall call, boolean granted) {

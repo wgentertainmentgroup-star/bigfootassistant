@@ -167,6 +167,7 @@ describe('Android voice and setup safety contracts', () => {
   const manifest = readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8')
   const nativeBridge = readFileSync('src/native.ts', 'utf8')
   const labels = readFileSync('android/app/src/main/res/values/strings.xml', 'utf8')
+  const server = readFileSync('server/server.mjs', 'utf8')
   const activity = readFileSync('android/app/src/main/java/com/bigfootsoftware/bigfootsday/MainActivity.java', 'utf8')
   const androidE2E = readFileSync('android/app/src/androidTest/java/com/bigfootsoftware/bigfootsday/MainActivityRegressionTest.java', 'utf8')
   const workflow = readFileSync('.github/workflows/publish-test-apk-release.yml', 'utf8')
@@ -302,7 +303,7 @@ describe('Android voice and setup safety contracts', () => {
 
   it('keeps the eleven-step setup and voice pass/fail check', () => {
     expect(app).toContain('Setup step ${step + 1} of 11')
-    expect(app).toContain("['Welcome', 'About you', 'Text size', 'Voice speed', 'Voice test', 'Reminders', 'Caller ID', 'Trusted helper', 'Connections', 'Learning', 'Ready']")
+    expect(app).toContain("['Welcome', 'About you', 'Text size', 'Voice speed', 'Voice test', 'Reminders', 'Caller ID', 'Phonebook & helper', 'Connections', 'Learning', 'Ready']")
     expect(app).toContain("status: 'idle' | 'listening' | 'passed' | 'failed'")
   })
 
@@ -314,14 +315,16 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('Exit tutorial and use the app')
   })
 
-  it('provides six lessons including how to leave and reopen the dashboard', () => {
+  it('provides seven lessons and pins the icon before leaving the dashboard', () => {
     expect(app).toContain('Lesson 1: Talk to Bubba')
     expect(app).toContain('Lesson 2: Use your list')
     expect(app).toContain('Lesson 3: Save a note')
     expect(app).toContain('Lesson 4: Find Camera & Video')
     expect(app).toContain('Lesson 5: Find More Help')
-    expect(app).toContain('Lesson 6: Go Home and come back')
-    expect(app).toContain('find the Bigfoot Software logo labeled “Bigfoot v0.18 Senior Tested”')
+    expect(app).toContain('Lesson 6: Put Bigfoot on Home')
+    expect(app).toContain('Lesson 7: Go Home and come back')
+    expect(app).toContain('Bigfoot v0.19 Google Choice')
+    expect(app.indexOf('await addHomeIcon()')).toBeLessThan(app.indexOf('await openPhoneHome()'))
     expect(app).toContain('function practiceLessonTask()')
     expect(app).toContain('function practiceLessonNote()')
     const taskPractice = app.slice(app.indexOf('function practiceLessonTask()'), app.indexOf('function practiceLessonNote()'))
@@ -330,7 +333,7 @@ describe('Android voice and setup safety contracts', () => {
     expect(notePractice).not.toContain('askAssistant(')
     expect(taskPractice).toContain("setSection('home')")
     expect(notePractice).toContain("setSection('home')")
-    expect(app).toContain('Lesson {state.preferences.learningStep + 1} of 6')
+    expect(app).toContain('Lesson {state.preferences.learningStep + 1} of 7')
     expect(androidE2E).toContain('newCustomerCanCompleteOrSkipEveryLesson')
     expect(androidE2E).toContain('completeSetupWithCustomerProfile')
     expect(androidE2E).toContain('The setup profile must appear on Today')
@@ -393,6 +396,43 @@ describe('Android voice and setup safety contracts', () => {
     expect(java).toContain('com.openai.chatgpt')
   })
 
+  it('walks through phonebook permission and imports contacts without duplicates', () => {
+    expect(app).toContain('PHONEBOOK & TRUSTED HELPER')
+    expect(app).toContain('Import my phonebook')
+    expect(app).toContain('Import from Phonebook')
+    expect(nativeBridge).toContain('CallAssistantPlugin.importPhoneContacts()')
+    expect(java).toContain('public void importPhoneContacts(PluginCall call)')
+    expect(java).toContain('ContactsContract.CommonDataKinds.Phone.CONTENT_URI')
+  })
+
+  it('keeps phone tasks and calendar working while making Google optional', () => {
+    expect(app).toContain('📱 This Phone')
+    expect(app).toContain('G Google Tasks')
+    expect(app).toContain('Gmail, Google Tasks & Calendar')
+    expect(app).toContain('data-testid="more-calendar"')
+    expect(java).toContain('CalendarContract.Events.CONTENT_URI')
+    expect(server).toContain('https://www.googleapis.com/auth/tasks')
+    expect(server).toContain("'/api/google/tasks'")
+    expect(server).toContain('tasks.googleapis.com/tasks/v1')
+  })
+
+  it('lets Bubba create voice tasks and review calendar invitations', () => {
+    const phone = freshState()
+    expect(localAssistant('Add call the doctor to my list', phone).changes?.tasks?.[0].text).toBe('call the doctor')
+    const google = freshState(); google.preferences.apiBase = 'https://assistant.example'; google.preferences.taskSource = 'google'
+    expect(localAssistant('Add call the doctor to my list', google).action?.type).toBe('google-task')
+    const event = localAssistant('Schedule doctor appointment tomorrow at 2 PM', phone)
+    expect(event.action?.type).toBe('calendar')
+    expect(event.reply).toContain('Review the details')
+  })
+
+  it('keeps the compact header below Android status indicators', () => {
+    expect(activity).toContain('WindowCompat.setDecorFitsSystemWindows(getWindow(), false)')
+    expect(activity).toContain('WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()')
+    expect(activity).toContain('view.setPadding(safe.left, safe.top, safe.right, safe.bottom)')
+    expect(styles).toContain('.topbar{height:62px')
+  })
+
   it('preserves reminders and the home-screen shortcut', () => {
     expect(nativeBridge).toContain('LocalNotifications.schedule')
     expect(java).toContain('requestPinShortcut')
@@ -429,8 +469,8 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.18 Senior Tested')
-    expect(app).toContain("const appVersion = 'v0.18 SENIOR ACCEPTANCE'")
+    expect(labels).toContain('Bigfoot v0.19 Google Choice')
+    expect(app).toContain("const appVersion = 'v0.19 GOOGLE CHOICE'")
     expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0140'")
     expect(styles).not.toContain('linear-gradient(145deg,#030b11')
   })
