@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.14 release gate: successful Lesson 1 speech must advance without navigation.
+# v0.16 release gate: every voice entry point and home-dashboard return must be safe.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.14-Lesson-Voice-Repair.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.16-Your-Day-Dashboard.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.14-lesson-voice-repair \
-            Bigfoots-Day-v0.14-Lesson-Voice-Repair.apk \
+          gh release create v0.16-your-day-dashboard \
+            Bigfoots-Day-v0.16-Your-Day-Dashboard.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.14 — Lesson Voice Repair" \
-            --notes "Samsung Z Fold5 Lesson 1 repair. The prior build correctly kept Today visible while listening but still routed to the dark assistant page after speech succeeded. Lesson 1 now uses a separate practice state machine: it confirms the words, stays on Today, and advances directly to Lesson 2. The release gate tests both the real Android microphone start and an injected successful speech result, rejecting any assistant-page navigation, black/white shell, or failure to advance. The main app shell is also teal instead of near-black. This installs separately as Bigfoot v0.14 Lesson Fix."
+            --title "Bigfoot's Day v0.16 — Your Day Dashboard" \
+            --notes "Samsung Z Fold5 home-dashboard release. Every microphone entry point stays on the current screen after speech, native recovery preserves a healthy page, and returning from Android tools restores Today. Adds direct Call, Text, Camera, Video, and Phone Home controls; the supplied Bigfoot Software logo; direct-to-user wording; and standard camera/headset/media keys used by many Bluetooth smart-glasses controls. The release gate tests fresh setup, every lesson, successful Lesson 1 and main-orb speech, black/white-screen protection, persistence, dashboard return, and hardware-key mappings. Installs separately as Bigfoot v0.16 Your Day."

@@ -6,12 +6,12 @@ const appToken = (import.meta.env.VITE_BIGFOOT_APP_TOKEN || '').trim()
 
 export const defaultState: AppState = {
   tasks: [
-    { id: 'welcome-task', text: 'Take a minute to set up Bigfoot\'s Day', due: new Date().toISOString().slice(0, 10), done: false, important: true, updatedAt: new Date().toISOString() },
+    { id: 'welcome-task', text: 'Take a minute to set up your day', due: new Date().toISOString().slice(0, 10), done: false, important: true, updatedAt: new Date().toISOString() },
   ],
   people: [],
   notes: [],
   chat: [
-    { role: 'assistant', text: "Hi. I’m Bubba, your Bigfoot’s Day assistant. Tell me what you need, or tap one of the big buttons below." },
+    { role: 'assistant', text: "Hi. I’m Bubba, your personal assistant. Tell me what you need, or tap one of the big buttons below." },
   ],
   preferences: {
     userName: 'Bryan',

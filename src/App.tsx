@@ -1,14 +1,16 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultState, loadState, saveState } from './storage'
-import { addVoiceStateListener, cancelVoiceInput, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openMapSearch, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
+import { addVoiceStateListener, cancelVoiceInput, getLastCaller, isAndroidDevice, openCamera, openChatGPT, openDeviceSettings, openDialer, openMapSearch, openPhoneHome, openTextMessage, openVideoCamera, requestCallerIdAccess, requestHomeShortcut, requestNotificationAccess, requestVoiceInput, scheduleReminder, setDeviceAlarm, setDeviceTimer, syncPeopleForCallerId, type NativeVoiceState } from './native'
 import { listen, speak } from './voice'
 import { startRealtimeVoice, type RealtimeController } from './realtime'
 import type { AppState, EmailMessage, Person, Section, Task } from './types'
+import brandLogo from './assets/bigfoot-software-logo.png'
+import brandMark from './assets/bigfoot-software-mark.png'
 
 const icon: Record<Section, string> = { home: '⌂', assistant: '✦', email: '✉', tasks: '✓', people: '☎', notes: '▤', settings: '⚙' }
 const label: Record<Section, string> = { home: 'Today', assistant: 'Ask Bubba', email: 'Email', tasks: 'My List', people: 'People', notes: 'Notes', settings: 'Settings' }
 const setupMarker = 'bigfoots-day-easy-setup-v0140'
-const appVersion = 'v0.14 LESSON VOICE REPAIR'
+const appVersion = 'v0.16 HOME DASHBOARD'
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function localDate() { return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) }
@@ -127,12 +129,12 @@ function App() {
   function patch(next: Partial<AppState>) { setState(s => ({ ...s, ...next })) }
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(''), 2600) }
 
-  async function askAssistant(message: string) {
+  async function askAssistant(message: string, openAssistantPage = true) {
     const text = message.trim()
     if (!text) return
     const userMessage = { role: 'user' as const, text }
     setState(s => ({ ...s, chat: [...s.chat, userMessage] }))
-    setSection('assistant')
+    if (openAssistantPage) setSection('assistant')
     setThinking(true)
     try {
       const configuredBase = state.preferences.apiBase.trim().replace(/\/$/, '')
@@ -161,6 +163,8 @@ function App() {
     if (action.type === 'map') opened = await openMapSearch(action.query)
     if (action.type === 'camera') opened = await openCamera()
     if (action.type === 'video') opened = await openVideoCamera()
+    if (action.type === 'dialer') opened = await openDialer()
+    if (action.type === 'text') opened = await openTextMessage()
     if (action.type === 'settings') opened = await openDeviceSettings()
     if (action.type === 'chatgpt') await launchChatGPT()
     if (action.type === 'call') {
@@ -179,7 +183,9 @@ function App() {
     setListening(true)
     try {
       const result = await captureVoiceOnce()
-      if (result.text) { await askAssistant(result.text); return true }
+      // Speech must never change pages. Keeping the current screen mounted avoids
+      // Samsung WebView black/white transitions and makes every mic button safe.
+      if (result.text) { await askAssistant(result.text, false); return true }
       notify(result.error || 'I didn’t hear anything. Tap the microphone and try again.')
       return false
     } finally {
@@ -236,7 +242,6 @@ function App() {
         onStatus: () => { setLiveVoice(true); notify('Bubba is listening. Just speak naturally.') },
         onAssistantText: text => setState(s => ({ ...s, chat: [...s.chat, { role: 'assistant', text }] })),
       })
-      setSection('assistant')
       setLiveVoice(true)
       return true
     } catch { setLiveVoice(false); notify('Live Bubba could not connect. Check Settings and microphone permission.'); return false }
@@ -252,10 +257,10 @@ function App() {
   return <div className={`app ${rootClass}`}>
     <header className="topbar">
       <button className="brand" onClick={() => setSection('home')} aria-label="Bigfoot's Day home">
-        <span className="paw">🐾</span><span><b>Bigfoot’s Day</b><small>Your day. Made simple.</small></span>
+        <img className="brand-mark" src={brandMark} alt="" /><span><b>Bigfoot’s Day</b><small>Your day. Made simple.</small></span>
       </button>
       <div className="version-badge">{appVersion}</div>
-      <div className="date-chip"><span className="status-dot" /> {localDate()}</div>
+      <div className="topbar-actions"><div className="date-chip"><span className="status-dot" /> {localDate()}</div><button className="phone-home" data-testid="phone-home-button" onClick={() => void openPhoneHome()} aria-label="Return to the phone home screen">⌂ HOME</button></div>
     </header>
 
     <div className="layout">
@@ -267,13 +272,13 @@ function App() {
       </nav>
 
       <main>
-        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} openChatGPT={launchChatGPT} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(5, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
+        {section === 'home' && <Home state={state} todayTasks={todayTasks} lastCaller={lastCaller} go={setSection} ask={askAssistant} talk={toggleLiveVoice} practiceTalk={practiceLessonVoice} openChatGPT={launchChatGPT} openPhone={openDialer} openTexts={openTextMessage} callHelper={() => placeConfirmedCall(state.preferences.trustedHelperName || 'your trusted helper', state.preferences.trustedHelperPhone)} advanceLearning={() => setState(s => ({ ...s, preferences: { ...s.preferences, learningStep: Math.min(6, s.preferences.learningStep + 1) } }))} toggleTask={id => patch({ tasks: state.tasks.map(t => t.id === id ? { ...t, done: !t.done, updatedAt: new Date().toISOString() } : t) })} />}
         {section === 'assistant' && <Assistant state={state} thinking={thinking} listening={listening} liveVoice={liveVoice} ask={askAssistant} listen={startListening} toggleLiveVoice={toggleLiveVoice} openChatGPT={launchChatGPT} goHome={() => setSection('home')} />}
         {section === 'email' && <Email state={state} notify={notify} />}
         {section === 'tasks' && <Tasks tasks={state.tasks} onChange={tasks => patch({ tasks })} notify={notify} />}
         {section === 'people' && <People people={state.people} onChange={people => patch({ people })} onCallerAccess={async () => notify(await requestCallerIdAccess() ? 'Caller identification is turned on.' : 'Caller identification permission was not granted.')} />}
         {section === 'notes' && <Notes notes={state.notes} onChange={notes => patch({ notes })} />}
-        {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onAddHomeShortcut={async () => notify(await requestHomeShortcut() ? 'Samsung opened the Add to Home screen request.' : 'Open Apps, press and hold Bigfoot, then tap Add to Home.')} onReset={() => { setState(defaultState); setShowSetup(true); notify('Bigfoot’s Day was reset.') }} />}
+        {section === 'settings' && <Settings state={state} onChange={setState} notify={notify} onRunSetup={() => setShowSetup(true)} onAddHomeShortcut={async () => notify(await requestHomeShortcut() ? 'Samsung opened the Add to Home screen request.' : 'Open Apps, press and hold your app icon, then tap Add to Home.')} onReset={() => { setState(defaultState); setShowSetup(true); notify('Your setup was reset.') }} />}
       </main>
     </div>
 
@@ -303,15 +308,15 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   const setPref = (key: keyof typeof p, value: string | boolean) => onChange({ ...state, preferences: { ...p, [key]: value } })
   const stepNames = ['Welcome', 'About you', 'Text size', 'Voice speed', 'Voice test', 'Reminders', 'Caller ID', 'Trusted helper', 'Connections', 'Learning', 'Ready']
   const readCopy = [
-    "Welcome to Bigfoot's Day. I will walk you through setup one simple step at a time. You can go back, or do optional steps later.",
+    "Welcome. I will walk you through your setup one simple step at a time. You can go back, or do optional steps later.",
     `Let's make this personal. Your name is ${p.userName || 'not entered yet'}, and your assistant is named ${p.assistantName || 'Bubba'}.`,
     'Choose the text that is easiest for you to read. You can use larger text and extra-high contrast.',
     `Choose how ${p.assistantName || 'Bubba'} should speak. You can hear answers at a normal pace or a slower pace.`,
     `Now we will test the microphone and speaker. Tap Test my voice, say hello ${p.assistantName || 'Bubba'}, and listen for the reply.`,
-    'Reminders let Bigfoot’s Day tell you when something on your list needs attention. Android will ask for permission before notifications are turned on.',
-    'Caller ID lets Bigfoot’s Day announce who is calling when the phone can identify the number. Android will ask you to approve caller identification and contacts access.',
-    'You can save one trusted helper for a large call button on the Today screen. Bigfoot’s Day will always ask you to confirm before opening the phone call.',
-    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Bubba'} can help with Gmail and your calendar. Bigfoot’s Day will never ask you to type your Google password into the app.` : 'Bubba is ready for everyday help. If you need a more detailed answer, tap More Help and continue speaking.',
+    'Your assistant can tell you when something on your list needs attention. Android will ask for permission before notifications are turned on.',
+    'Your caller ID can announce who is calling when the phone recognizes the number. Android will ask you to approve caller identification and contacts access.',
+    'You can save one trusted helper for a large call button on the Today screen. Your assistant will always ask you to confirm before opening the phone call.',
+    p.apiBase.trim() ? `Connect Google with one button so ${p.assistantName || 'Bubba'} can help with Gmail and your calendar. Your app will never ask you to type your Google password into it.` : 'Bubba is ready for everyday help. If you need a more detailed answer, tap More Help and continue speaking.',
     'You will learn one skill at a time: talking to Bubba, managing your list, saving notes, using reminders and caller identification, and opening ChatGPT for more detailed help.',
     `Setup is finished. ${p.assistantName || 'Bubba'} is ready to help. You can run this setup guide again any time from Settings.`,
   ]
@@ -351,11 +356,11 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   }
 
   return <div className={`setup-shell ${rootClass}`} data-testid="setup-wizard">
-    <header className="setup-header"><div className="setup-brand"><span>🐾</span><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.14</span></header>
+    <header className="setup-header"><div className="setup-brand"><img src={brandMark} alt="" /><b>Bigfoot’s Day</b></div><span>Easy Setup · v0.16</span></header>
     <main className="setup-main">
       <div className="setup-progress" aria-label={`Setup step ${step + 1} of 11`}><div className="setup-progress-copy"><b>Step {step + 1} of 11</b><span>{stepNames[step]}</span></div><div className="setup-dots" aria-hidden="true">{stepNames.map((name, index) => <i key={name} className={index <= step ? 'done' : ''} />)}</div></div>
       <section className="setup-card">
-        {step === 0 && <div className="setup-content center"><div className="setup-paw">🐾</div><span className="eyebrow">WELCOME</span><h1>Let’s set up Bigfoot’s Day together.</h1><p className="setup-lead">I’ll walk you through it one simple step at a time. There is no rush.</p><div className="setup-reassurance">✓ You can go back at any time.<br />✓ Optional steps can be done later.<br />✓ Nothing important is sent without your approval.</div></div>}
+        {step === 0 && <div className="setup-content center"><img className="setup-logo" src={brandLogo} alt="Bigfoot Software" /><span className="eyebrow">WELCOME</span><h1>Let’s set up your day together.</h1><p className="setup-lead">I’ll walk you through it one simple step at a time. There is no rush.</p><div className="setup-reassurance">✓ You can go back at any time.<br />✓ Optional steps can be done later.<br />✓ Nothing important is sent without your approval.</div></div>}
 
         {step === 1 && <div className="setup-content"><span className="eyebrow">MAKE IT PERSONAL</span><h1>What should we call you?</h1><p className="setup-lead">This helps your assistant speak to you naturally.</p><label className="setup-label">Your first name<input autoFocus value={p.userName} onChange={e => setPref('userName', e.target.value)} placeholder="Your first name" /></label><label className="setup-label">Your assistant’s name<input value={p.assistantName} onChange={e => setPref('assistantName', e.target.value)} placeholder="Bubba" /></label><p className="setup-tip">Tip: “Bubba” is the standard name, but you can choose any name you like.</p></div>}
 
@@ -365,17 +370,17 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
 
         {step === 4 && <div className="setup-content"><span className="eyebrow">VOICE CHECK</span><h1>Let’s make sure voice really works.</h1><p className="setup-lead">Tap the button, allow the microphone when Samsung asks, then say <strong>“Hello Bubba.”</strong> Bubba will repeat what was heard.</p><button className="setup-action voice-check" disabled={voiceTest.status === 'listening'} onClick={() => void testVoice()}>🎙 {voiceTest.status === 'listening' ? 'Listening…' : voiceTest.status === 'passed' ? 'Test voice again' : 'Test my voice'}</button>{voiceTest.status === 'passed' && <div className="setup-success">✓ Voice passed. Bubba heard: “{voiceTest.text}” and played a spoken reply.</div>}{voiceTest.status === 'failed' && <div className="setup-later"><b>Voice is not ready yet.</b><br />{voiceTest.text}<br /><br />Check that media volume is turned up, then tap <strong>Test my voice</strong> again.</div>}</div>}
 
-        {step === 5 && <div className="setup-content"><span className="eyebrow">REMINDERS</span><h1>Would you like helpful reminders?</h1><p className="setup-lead">Bigfoot’s Day can remind you about appointments, calls, medicine, errands, and anything else you put on your list.</p><div className="setup-permission"><span>🔔</span><div><b>Android will ask for permission.</b><p>When the phone asks, tap <strong>Allow</strong> if you want Bigfoot’s Day to show reminders.</p></div></div><button className="setup-action" onClick={() => void enableReminders()}>Turn on reminders</button>{reminderStatus === 'granted' && <div className="setup-success">✓ Reminders are turned on.</div>}{reminderStatus === 'not-granted' && <div className="setup-later">That’s okay. Reminders are not on. You can change this later.</div>}</div>}
+        {step === 5 && <div className="setup-content"><span className="eyebrow">REMINDERS</span><h1>Would you like helpful reminders?</h1><p className="setup-lead">Your assistant can remind you about appointments, calls, medicine, errands, and anything else you put on your list.</p><div className="setup-permission"><span>🔔</span><div><b>Android will ask for permission.</b><p>When the phone asks, tap <strong>Allow</strong> if you want your reminders to appear.</p></div></div><button className="setup-action" onClick={() => void enableReminders()}>Turn on reminders</button>{reminderStatus === 'granted' && <div className="setup-success">✓ Reminders are turned on.</div>}{reminderStatus === 'not-granted' && <div className="setup-later">That’s okay. Reminders are not on. You can change this later.</div>}</div>}
 
-        {step === 6 && <div className="setup-content"><span className="eyebrow">CALLER ID</span><h1>Let Bigfoot’s Day tell you who is calling.</h1><p className="setup-lead">When a call comes in, Bigfoot’s Day can announce the person’s name when it recognizes the number.</p><div className="setup-permission"><span>☎</span><div><b>You may see two Android questions.</b><p>Choose Bigfoot’s Day for caller identification, then allow contacts so names can be recognized.</p></div></div><button className="setup-action" onClick={() => void enableCallerId()}>Turn on caller ID</button>{callerStatus === 'granted' && <div className="setup-success">✓ Caller identification is turned on.</div>}{callerStatus === 'not-granted' && <div className="setup-later">Caller ID is not on yet. No problem — you can do this later.</div>}</div>}
+        {step === 6 && <div className="setup-content"><span className="eyebrow">CALLER ID</span><h1>Let your assistant tell you who is calling.</h1><p className="setup-lead">When a call comes in, your assistant can announce the person’s name when it recognizes the number.</p><div className="setup-permission"><span>☎</span><div><b>You may see two Android questions.</b><p>Choose your assistant app for caller identification, then allow contacts so names can be recognized.</p></div></div><button className="setup-action" onClick={() => void enableCallerId()}>Turn on caller ID</button>{callerStatus === 'granted' && <div className="setup-success">✓ Caller identification is turned on.</div>}{callerStatus === 'not-granted' && <div className="setup-later">Caller ID is not on yet. No problem — you can do this later.</div>}</div>}
 
         {step === 7 && <div className="setup-content"><span className="eyebrow">TRUSTED HELPER</span><h1>Who should be easy to call?</h1><p className="setup-lead">This is optional. Add one family member, friend, or caregiver for the large <strong>Call My Helper</strong> button.</p><label className="setup-label">Helper’s name<input value={p.trustedHelperName} onChange={e => setPref('trustedHelperName', e.target.value)} placeholder="For example: Linda" /></label><label className="setup-label">Helper’s phone number<input type="tel" inputMode="tel" value={p.trustedHelperPhone} onChange={e => setPref('trustedHelperPhone', e.target.value)} placeholder="Phone number" /></label><div className="setup-reassurance compact">✓ The app will always show the name and ask you to confirm before opening a call.<br />✓ This button does not contact emergency services.</div></div>}
 
-        {step === 8 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Bubba to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Bubba'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Bigfoot’s Day will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to Bigfoot’s Day.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up Bigfoot’s Day and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Bubba can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Bubba for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>No technical account setup is needed.</b><p>Your list, notes, timers, calls, camera, Maps, caller ID and voice tools work directly on this phone.</p></div></div><div className="setup-success">✓ Your everyday tools are ready.</div></div>)}
+        {step === 8 && (p.apiBase.trim() ? <div className="setup-content"><span className="eyebrow">GOOGLE</span><h1>Would you like Bubba to help with email and your calendar?</h1><p className="setup-lead">One Google connection lets {p.assistantName || 'Bubba'} show important email, suggest replies, and help plan your day around appointments.</p><div className="setup-permission"><span>G</span><div><b>You’ll choose your Google account.</b><p>Google handles the sign-in. Your app will never ask you to type your Google password here.</p></div></div><button className="setup-action google-button" onClick={() => void connectGoogle()}>Connect Google</button>{googleStatus === 'connected' && <div className="setup-success">✓ Google opened. Finish the Google steps, then return to your app.</div>}{googleStatus === 'not-connected' && <div className="setup-later"><b>Google isn’t available yet.</b><br />You can keep setting up your app and connect Google later.</div>}<p className="setup-tip">You can skip this and still use your list, reminders, people, notes, and caller ID.</p></div> : <div className="setup-content"><span className="eyebrow">MORE HELP</span><h1>Bubba can help with everyday needs and bigger questions.</h1><p className="setup-lead">Use Bubba for your list, reminders, people and notes. When you need a more detailed answer, tap <strong>More Help</strong> and keep talking.</p><div className="setup-permission"><span>✦</span><div><b>No technical account setup is needed.</b><p>Your list, notes, timers, calls, camera, Maps, caller ID and voice tools work directly on this phone.</p></div></div><div className="setup-success">✓ Your everyday tools are ready.</div></div>)}
 
-        {step === 9 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then try the everyday tools on Today.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your day</b><small>Use lists, notes, shopping items and reminders.</small></div><div><b>3. Use phone tools</b><small>Set timers and alarms, open maps and the camera.</small></div><div><b>4. People & caller ID</b><small>Keep important people easy to reach.</small></div><div><b>5. More Help</b><small>Open ChatGPT for detailed questions.</small></div></div></div>}
+        {step === 9 && <div className="setup-content"><span className="eyebrow">LEARN A LITTLE AT A TIME</span><h1>Bubba will teach you inside the app.</h1><p className="setup-lead">You will see one short lesson at a time. Finish it when you are ready, then try the everyday tools on Today.</p><div className="capability-roadmap"><div><b>1. Talk & listen</b><small>Ask a question and hear Bubba answer.</small></div><div><b>2. Manage your day</b><small>Use lists, notes, shopping items and reminders.</small></div><div><b>3. Use phone tools</b><small>Set timers and alarms, open maps and the camera.</small></div><div><b>4. People & caller ID</b><small>Keep important people easy to reach.</small></div><div><b>5. More Help</b><small>Open ChatGPT for detailed questions.</small></div><div><b>6. Go Home & come back</b><small>Return to the normal phone screen, then reopen your dashboard.</small></div></div></div>}
 
-        {step === 10 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Bigfoot’s Day will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>{p.slowVoice ? 'Slower' : 'Normal'} speaking pace</small></div><div><span>☎</span><b>{p.trustedHelperName && p.trustedHelperPhone ? p.trustedHelperName : 'Can add later'}</b><small>Trusted helper</small></div><div><span>⌂</span><b>App icon is installed</b><small>Add it to Home later from Settings</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
+        {step === 10 && <div className="setup-content center"><div className="setup-paw ready">✓</div><span className="eyebrow">READY TO BEGIN</span><h1>Your first lesson is waiting.</h1><p className="setup-lead">Start simple. Your assistant will show only one new lesson at a time.</p><div className="setup-summary"><div><span>👤</span><b>{p.userName || 'Your name'}</b><small>Your profile</small></div><div><span>🎙</span><b>{voiceTest.status === 'passed' ? 'Voice tested' : 'Voice needs testing'}</b><small>{p.slowVoice ? 'Slower' : 'Normal'} speaking pace</small></div><div><span>☎</span><b>{p.trustedHelperName && p.trustedHelperPhone ? p.trustedHelperName : 'Can add later'}</b><small>Trusted helper</small></div><div><span>⌂</span><b>App icon is installed</b><small>Add it to Home later from Settings</small></div></div><p className="setup-tip">You can run this setup and the voice test again from Settings.</p></div>}
 
         <button className="setup-read" onClick={() => speak(readCopy[step], true, p.slowVoice)}>🔊 Read this screen to me</button>
       </section>
@@ -386,22 +391,25 @@ function SetupWizard({ state, voiceUi, onCancelVoice, onChange, onFinish }: { st
   </div>
 }
 
-function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, openChatGPT, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; openChatGPT: () => Promise<void>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
+function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, openChatGPT, openPhone, openTexts, callHelper, advanceLearning, toggleTask }: { state: AppState; todayTasks: Task[]; lastCaller: string; go: (s: Section) => void; ask: (s: string) => Promise<void>; talk: () => Promise<boolean>; practiceTalk: () => Promise<boolean>; openChatGPT: () => Promise<void>; openPhone: () => Promise<boolean>; openTexts: () => Promise<boolean>; callHelper: () => boolean; advanceLearning: () => void; toggleTask: (id: string) => void }) {
   const name = state.preferences.userName || 'there'
   const lesson = [
     { title: 'Lesson 1: Talk to Bubba', copy: 'Tap Practice talking and say “What can you do?” Bubba will confirm what was heard and Lesson 2 will appear here. This practice never opens another page.', action: '🎙 Practice talking', run: async () => { const worked = await practiceTalk(); if (worked) advanceLearning() } },
     { title: 'Lesson 2: Use your list', copy: 'Bubba will add “drink a glass of water” to your list, then bring you back here.', action: '✓ Practice adding a task', run: async () => { await ask('Add drink a glass of water to my list'); go('home'); advanceLearning() } },
-    { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note, then bring you back here.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use Bigfoot’s Day'); go('home'); advanceLearning() } },
+    { title: 'Lesson 3: Save a note', copy: 'Bubba will save a practice note, then bring you back here.', action: '▤ Practice saving a note', run: async () => { await ask('Save a note that I am learning to use my assistant'); go('home'); advanceLearning() } },
     { title: 'Lesson 4: Find Camera & Video', copy: 'The two large Camera and Video buttons are directly above this lesson. Tap below when you have found them.', action: '▣ I found both buttons', run: async () => { document.querySelector('[data-testid="camera-button"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); advanceLearning() } },
-    { title: 'Lesson 5: Get detailed help', copy: 'For detailed questions, Bigfoot’s Day opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
-  ][Math.min(4, state.preferences.learningStep)]
+    { title: 'Lesson 5: Get detailed help', copy: 'For detailed questions, your assistant opens the ChatGPT app you already use.', action: '✦ Open More Help', run: async () => { await openChatGPT(); advanceLearning() } },
+    { title: 'Lesson 6: Go Home and come back', copy: 'Tap Try HOME below to open the normal Samsung home screen. To return, find the Bigfoot Software logo labeled “Bigfoot v0.16 Your Day” and tap it. Your Today dashboard will be waiting.', action: '⌂ Try HOME', run: async () => { advanceLearning(); await openPhoneHome() } },
+  ][Math.min(5, state.preferences.learningStep)]
   return <div className="page home-page">
     <section className="welcome jarvis-welcome"><div className="welcome-copy"><span className="eyebrow">BUBBA // PERSONAL ASSISTANT</span><h1>{timeGreeting()}, {name}.</h1><p>{todayTasks.length ? `You have ${todayTasks.length} thing${todayTasks.length === 1 ? '' : 's'} to take care of. I’ll help you handle them one at a time.` : 'Your list is clear. I’m ready whenever you are.'}</p><div className="system-ready"><i /> BUBBA IS READY</div><small className="talk-example">Try saying: “What do I need to do today?”</small></div><button className="scout-core" onClick={() => void talk()} aria-label="Start a conversation with Bubba"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><span className="core-center"><em>✦</em><b>BUBBA</b><small>TAP TO TALK</small></span></button></section>
-    <section className="media-launcher" aria-label="Camera and video">
-      <button className="media-button camera" data-testid="camera-button" onClick={() => ask('Open camera')}><span>▣</span><div><b>CAMERA</b><small>Take a photo</small></div></button>
-      <button className="media-button video" data-testid="video-button" onClick={() => ask('Open video camera')}><span>▶</span><div><b>VIDEO</b><small>Record a video</small></div></button>
+    <section className="media-launcher" aria-label="Phone and camera shortcuts">
+      <button className="media-button camera" data-testid="camera-button" onClick={() => void openCamera()}><span>▣</span><div><b>CAMERA</b><small>Take a photo</small></div></button>
+      <button className="media-button video" data-testid="video-button" onClick={() => void openVideoCamera()}><span>▶</span><div><b>VIDEO</b><small>Record a video</small></div></button>
+      <button className="media-button call" data-testid="call-button" onClick={() => void openPhone()}><span>☎</span><div><b>CALL</b><small>Open phone dialer</small></div></button>
+      <button className="media-button text" data-testid="text-button" onClick={() => void openTexts()}><span>✉</span><div><b>TEXT</b><small>Open text messages</small></div></button>
     </section>
-    {state.preferences.learningStep < 5 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 5 · You can skip any lesson and return later.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
+    {state.preferences.learningStep < 6 ? <section className="panel learning-card" data-testid="lesson-card" data-lesson={state.preferences.learningStep + 1}><div className="learning-number">{state.preferences.learningStep + 1}</div><div><span className="eyebrow">LEARN ONE THING AT A TIME</span><h2>{lesson.title}</h2><p>{lesson.copy}</p><small>Lesson {state.preferences.learningStep + 1} of 6 · You can skip any lesson and return later.</small></div><div className="learning-actions"><button className="lesson-primary" data-testid="lesson-primary" onClick={() => void lesson.run()}>{lesson.action}</button><button className="lesson-skip" data-testid="lesson-skip" onClick={advanceLearning}>Skip this lesson →</button></div></section> : <section className="panel learning-complete" data-testid="lessons-complete"><span>✓</span><div><b>You completed the starter lessons.</b><small>Use “Run Easy Setup Again” in Settings whenever you want a refresher.</small></div></section>}
     <div className="quick-grid">
       <button className="quick primary" onClick={() => ask('Manage my day. Review my open list and notes. Tell me what needs attention first and keep it short.')}><span>☀</span><b>Manage my day</b><small>Your list and notes — one simple plan.</small></button>
       <button className="quick" onClick={() => go('tasks')}><span>✓</span><b>What do I need to do?</b><small>{todayTasks.length} open for today</small></button>
@@ -415,7 +423,7 @@ function Home({ state, todayTasks, lastCaller, go, ask, talk, practiceTalk, open
     <section className="panel today-panel"><div className="panel-head"><div><span className="eyebrow">TODAY</span><h2>Your short list</h2></div><button className="text-button" onClick={() => go('tasks')}>See all →</button></div>
       {todayTasks.length === 0 ? <div className="empty">✓ Nothing urgent. You’re caught up.</div> : todayTasks.slice(0, 4).map(t => <label className="task-row" key={t.id}><input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} /><span><b>{t.text}</b><small>{t.due ? 'Due today or earlier' : 'No date'}</small></span>{t.important && <em>Important</em>}</label>)}
     </section>
-    <p className="reassurance">🔒 Bigfoot’s Day keeps personal actions under your control. It will ask before sending or changing anything important.</p>
+    <p className="reassurance">🔒 Your personal actions stay under your control. Your assistant will ask before sending or changing anything important.</p>
   </div>
 }
 
@@ -550,7 +558,7 @@ function Settings({ state, onChange, notify, onRunSetup, onAddHomeShortcut, onRe
   }
   return <div className="page settings"><div className="page-title"><div><span className="eyebrow">MAKE IT YOURS</span><h1>Settings</h1><p>Big controls. Plain language. Nothing hidden.</p></div></div>
     <section className="panel setup-again"><div><h2>Need help setting things up?</h2><p>We can walk through setup together again, one step at a time. Your saved information will stay here.</p></div><button onClick={onRunSetup}>Run Easy Setup Again</button></section>
-    <section className="panel setup-again"><div><h2>Put Bigfoot on the Home screen</h2><p>This is optional and no longer interrupts setup. Samsung may show an Add to Home confirmation.</p></div><button onClick={onAddHomeShortcut}>Add Icon to Home</button></section>
+    <section className="panel setup-again"><div><h2>Put your app on the Home screen</h2><p>This is optional and no longer interrupts setup. Samsung may show an Add to Home confirmation.</p></div><button onClick={onAddHomeShortcut}>Add Icon to Home</button></section>
     <section className="panel settings-group"><h2>You & Bubba</h2><label>Your first name<input value={p.userName} onChange={e => set('userName', e.target.value)} /></label><label>Assistant name<input value={p.assistantName} onChange={e => set('assistantName', e.target.value)} /></label></section>
     <section className="panel settings-group"><h2>Easy to see & hear</h2><Toggle label="Speak answers out loud" value={p.voice} set={v => set('voice', v)} /><Toggle label="Use slower speech" value={p.slowVoice} set={v => set('slowVoice', v)} /><Toggle label="Use larger text" value={p.largeText} set={v => set('largeText', v)} /><Toggle label="Extra-high contrast" value={p.highContrast} set={v => set('highContrast', v)} /><button className="settings-voice-sample" onClick={() => void speak(`Hi ${p.userName || 'there'}. This is Bubba using your chosen speaking pace.`, true, p.slowVoice)}>🔊 Hear Bubba’s voice</button></section>
     <section className="panel settings-group"><h2>Trusted helper</h2><p className="hint">Optional. This person appears on a large button on Today. Every call requires confirmation.</p><label>Helper’s name<input value={p.trustedHelperName} onChange={e => set('trustedHelperName', e.target.value)} placeholder="Name" /></label><label>Helper’s phone number<input type="tel" inputMode="tel" value={p.trustedHelperPhone} onChange={e => set('trustedHelperPhone', e.target.value)} placeholder="Phone number" /></label></section>
@@ -581,7 +589,7 @@ function GoogleConnection({ apiBase, companionToken, notify }: { apiBase: string
       const timer = window.setInterval(async () => { tries++; await check(); if (tries >= 20) clearInterval(timer) }, 3000)
     } catch { notify('Google connection is not configured on the companion service yet.') }
   }
-  return <section className="panel settings-group google-connect"><h2>Gmail & Google Calendar</h2><p className="hint">Connect once so Bubba can brief you on email and your calendar. Bigfoot’s Day never asks for your Google password.</p><div className={`connection-row ${connected ? '' : 'offline'}`}><span className="status-dot" /> {checking ? 'Checking Google…' : connected ? `Connected${email ? ` as ${email}` : ''}` : 'Not connected'}</div><div className="sync-actions">{!connected && <button onClick={() => void connect()}>Connect Google</button>}<button onClick={() => void check()}>Check connection</button></div></section>
+  return <section className="panel settings-group google-connect"><h2>Gmail & Google Calendar</h2><p className="hint">Connect once so Bubba can brief you on email and your calendar. Your app never asks for your Google password.</p><div className={`connection-row ${connected ? '' : 'offline'}`}><span className="status-dot" /> {checking ? 'Checking Google…' : connected ? `Connected${email ? ` as ${email}` : ''}` : 'Not connected'}</div><div className="sync-actions">{!connected && <button onClick={() => void connect()}>Connect Google</button>}<button onClick={() => void check()}>Check connection</button></div></section>
 }
 
 function Toggle({ label, value, set }: { label: string; value: boolean; set: (v: boolean) => void }) { return <label className="toggle-row"><span>{label}</span><button className={`switch ${value ? 'on' : ''}`} onClick={() => set(!value)} aria-pressed={value}><i /></button></label> }
@@ -596,6 +604,8 @@ export type AssistantAction =
   | { type: 'map'; query: string }
   | { type: 'camera' }
   | { type: 'video' }
+  | { type: 'dialer' }
+  | { type: 'text' }
   | { type: 'settings' }
   | { type: 'chatgpt' }
   | { type: 'call'; phone: string }
@@ -648,6 +658,8 @@ export function localAssistant(text: string, state: AppState): LocalAssistantRes
 
   if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?(?:video camera|camera video|video recorder)[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera in video mode.', action: { type: 'video' } }
   if (/^(?:please\s+)?(?:open|start)\s+(?:the\s+)?(?:photo )?camera[.!?]*$/i.test(text)) return { reply: 'I’m opening the camera for a picture.', action: { type: 'camera' } }
+  if (/^(?:please\s+)?(?:open|show)\s+(?:the\s+)?(?:phone|dialer)[.!?]*$/i.test(text)) return { reply: 'I’m opening the phone dialer.', action: { type: 'dialer' } }
+  if (/^(?:please\s+)?(?:open|show)\s+(?:the\s+)?(?:text|texts|messages|text messages)[.!?]*$/i.test(text)) return { reply: 'I’m opening your text messages.', action: { type: 'text' } }
   if (/^(?:please\s+)?open\s+(?:phone\s+|device\s+)?settings[.!?]*$/i.test(text)) return { reply: 'I’m opening your phone settings.', action: { type: 'settings' } }
   if (/^(?:please\s+)?(?:open|continue (?:in|with)|use)\s+(?:the\s+)?chatgpt[.!?]*$/i.test(text)) return { reply: 'I’m opening ChatGPT for more detailed help.', action: { type: 'chatgpt' } }
 

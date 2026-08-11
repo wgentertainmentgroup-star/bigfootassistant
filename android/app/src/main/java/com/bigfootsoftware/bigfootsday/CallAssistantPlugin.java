@@ -381,6 +381,28 @@ public class CallAssistantPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openDialer(PluginCall call) {
+        String phone = call.getString("phone", "").trim();
+        openIntent(call, new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(phone))));
+    }
+
+    @PluginMethod
+    public void openTextMessage(PluginCall call) {
+        String phone = call.getString("phone", "").trim();
+        String body = call.getString("body", "").trim();
+        Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(phone)));
+        if (!body.isEmpty()) intent.putExtra("sms_body", body);
+        openIntent(call, intent);
+    }
+
+    @PluginMethod
+    public void openPhoneHome(PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_HOME);
+        openIntent(call, intent);
+    }
+
+    @PluginMethod
     public void openDeviceSettings(PluginCall call) {
         openIntent(call, new Intent(Settings.ACTION_SETTINGS));
     }

@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.view.KeyEvent;
 import androidx.lifecycle.Lifecycle;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -186,11 +187,13 @@ public class MainActivityRegressionTest {
 
             assertTrue("Lesson 3 practice must run", clickSelector(scenario, "[data-testid=lesson-primary]"));
             assertTrue("Lesson 3 must return home and advance", waitForJavascript(scenario, "document.body.innerText.includes('Lesson 4: Find Camera & Video')", "true"));
-            assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('I am learning to use Bigfoot')", "true"));
+            assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('I am learning to use my assistant')", "true"));
 
             assertTrue("Lesson 4 must advance after the customer finds the controls", clickSelector(scenario, "[data-testid=lesson-primary]"));
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 5: Get detailed help')", "true"));
             assertTrue("Lesson 5 must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Lesson 6: Go Home and come back') && document.body.innerText.includes('Bigfoot v0.16 Your Day')", "true"));
+            assertTrue("The Home tutorial must also have a nonblocking skip path", clickSelector(scenario, "[data-testid=lesson-skip]"));
             assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=lessons-complete]'))", "true"));
             assertHealthyBigfootPage(scenario);
         }
@@ -202,7 +205,7 @@ public class MainActivityRegressionTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             resetToFreshInstall(scenario);
             completeSetup(scenario);
-            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=camera-button]')) && Boolean(document.querySelector('[data-testid=video-button]')) && document.body.innerText.includes('CAMERA') && document.body.innerText.includes('VIDEO')", "true"));
+            assertTrue(waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=camera-button]')) && Boolean(document.querySelector('[data-testid=video-button]')) && Boolean(document.querySelector('[data-testid=call-button]')) && Boolean(document.querySelector('[data-testid=text-button]')) && document.body.innerText.includes('CAMERA') && document.body.innerText.includes('VIDEO') && document.body.innerText.includes('CALL') && document.body.innerText.includes('TEXT')", "true"));
 
             assertTrue(clickByText(scenario, "My List"));
             setFieldAndSubmit(scenario, "Example: Call the doctor", "End-to-end doctor task", ".add-form");
@@ -230,6 +233,54 @@ public class MainActivityRegressionTest {
             assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('Bigfoot')", "true"));
             assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('End-to-end saved note')", "true"));
             assertTrue(waitForJavascript(scenario, "localStorage.getItem('bigfoots-day-state-v1').includes('Test Helper')", "true"));
+            assertHealthyBigfootPage(scenario);
+        }
+    }
+
+    @Test
+    public void h_successfulMainBubbaVoiceStaysOnToday() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            assertEquals("true", evaluate(scenario, "window.__bigfootVoiceTestResult={text:'What can you do?',error:''};true"));
+            assertTrue("The main Bubba orb must be clickable", clickSelector(scenario, ".scout-core"));
+            assertTrue(
+                "Successful speech from the main orb must remain on Today without a black assistant transition",
+                waitForJavascript(
+                    scenario,
+                    "Boolean(document.querySelector('.home-page')) && !document.querySelector('.assistant-page') && document.body.innerText.includes('BUBBA IS READY')",
+                    "true"
+                )
+            );
+            assertHealthyBigfootPage(scenario);
+            assertEquals(Lifecycle.State.RESUMED, scenario.getState());
+        }
+    }
+
+    @Test
+    public void i_standardSmartGlassesKeysAreMappedToCamera() {
+        assertTrue(MainActivity.isCameraHardwareKey(KeyEvent.KEYCODE_CAMERA));
+        assertTrue(MainActivity.isCameraHardwareKey(KeyEvent.KEYCODE_HEADSETHOOK));
+        assertTrue(MainActivity.isCameraHardwareKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE));
+        assertTrue(!MainActivity.isCameraHardwareKey(KeyEvent.KEYCODE_VOLUME_DOWN));
+    }
+
+    @Test
+    public void j_returningToTheAppRestoresTheTodayDashboard() throws Exception {
+        grantMicrophonePermission();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            resetToFreshInstall(scenario);
+            completeSetup(scenario);
+            assertTrue("Phone Home must be visible on the dashboard", waitForJavascript(scenario, "Boolean(document.querySelector('[data-testid=phone-home-button]'))", "true"));
+            assertTrue("Navigate away from Today for the return test", clickByText(scenario, "My List"));
+            assertTrue(waitForJavascript(scenario, "document.body.innerText.includes('What do you need to remember?')", "true"));
+            scenario.moveToState(Lifecycle.State.CREATED);
+            scenario.moveToState(Lifecycle.State.RESUMED);
+            assertTrue(
+                "Returning from an Android screen must place the simple Today dashboard back on top",
+                waitForJavascript(scenario, "Boolean(document.querySelector('.home-page')) && document.body.innerText.includes('BUBBA IS READY')", "true")
+            );
             assertHealthyBigfootPage(scenario);
         }
     }

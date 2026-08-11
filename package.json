@@ -1,7 +1,7 @@
 {
   "name": "bigfoots-day",
   "private": true,
-  "version": "0.14.0",
+  "version": "0.16.0",
   "type": "module",
   "description": "Bigfoot's Day - a simple personal assistant for Windows and Android",
   "main": "electron/main.cjs",

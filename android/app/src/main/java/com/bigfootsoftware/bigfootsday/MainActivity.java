@@ -1,9 +1,12 @@
 package com.bigfootsoftware.bigfootsday;
 
 import android.os.Bundle;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.provider.MediaStore;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -40,7 +43,7 @@ public class MainActivity extends BridgeActivity {
         webView.bringToFront();
         if (voiceSafetyPanel != null) voiceSafetyPanel.bringToFront();
         webView.postDelayed(() -> webView.evaluateJavascript(
-            "(function(){return !document.querySelector('.app,.setup-shell') && (!document.body || document.body.innerText.trim().length===0);})()",
+            "(function(){var blank=!document.querySelector('.app,.setup-shell')&&(!document.body||document.body.innerText.trim().length===0);if(!blank){var home=document.querySelector('.app .brand');if(home)home.click();}return blank;})()",
             blank -> { if ("true".equals(blank)) webView.reload(); }
         ), 1200L);
     }
@@ -112,9 +115,33 @@ public class MainActivity extends BridgeActivity {
             webView.setVisibility(View.VISIBLE);
             webView.setBackgroundColor(Color.rgb(8, 54, 68));
             webView.bringToFront();
-            // Reloading restores React's safe Today route while preserving saved data.
-            webView.reload();
+            // Keep the mounted page intact. Reload only when the document truly failed;
+            // unconditional reloads caused a black transition on some Samsung WebViews.
+            webView.evaluateJavascript(
+                "(function(){var shell=document.querySelector('.app,.setup-shell');if(!shell||!document.body||document.body.innerText.trim().length===0)return 'reload';var home=document.querySelector('.brand');if(home)home.click();return 'ok';})()",
+                result -> { if (result != null && result.contains("reload")) webView.reload(); }
+            );
         });
+    }
+
+    public static boolean isCameraHardwareKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_CAMERA
+            || keyCode == KeyEvent.KEYCODE_HEADSETHOOK
+            || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_UP && isCameraHardwareKey(event.getKeyCode())) {
+            try {
+                startActivity(new Intent(MediaStore.ACTION_IMAGE_CAPTURE));
+                return true;
+            } catch (Exception ignored) {
+                // Let Android or the glasses companion app handle unsupported keys.
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override

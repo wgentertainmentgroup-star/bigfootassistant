@@ -85,6 +85,11 @@ describe('Bubba local assistant regression suite', () => {
     expect(localAssistant('Open video camera', freshState()).action).toEqual({ type: 'video' })
   })
 
+  it('opens the native dialer and default text app from speech', () => {
+    expect(localAssistant('Open the dialer', freshState()).action).toEqual({ type: 'dialer' })
+    expect(localAssistant('Open text messages', freshState()).action).toEqual({ type: 'text' })
+  })
+
   it('hands detailed questions to the installed ChatGPT app', () => {
     expect(localAssistant('Open ChatGPT', freshState()).action).toEqual({ type: 'chatgpt' })
   })
@@ -168,6 +173,7 @@ describe('Android voice and setup safety contracts', () => {
   const capacitor = readFileSync('capacitor.config.ts', 'utf8')
   const voice = readFileSync('src/voice.ts', 'utf8')
   const styles = readFileSync('src/styles.css', 'utf8')
+  const storage = readFileSync('src/storage.ts', 'utf8')
 
   it('uses on-device-first SpeechRecognizer without launching an external speech activity', () => {
     expect(java).toContain('SpeechRecognizer.createOnDeviceSpeechRecognizer')
@@ -202,10 +208,65 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('data-testid="assistant-home"')
   })
 
+  it('keeps every general and live voice path on the currently visible page', () => {
+    const listeningStart = app.indexOf('async function startListening()')
+    const listeningEnd = app.indexOf('async function practiceLessonVoice()', listeningStart)
+    const listening = app.slice(listeningStart, listeningEnd)
+    const liveStart = app.indexOf('async function toggleLiveVoice()')
+    const liveEnd = app.indexOf('async function launchChatGPT()', liveStart)
+    const live = app.slice(liveStart, liveEnd)
+    expect(listening).toContain('askAssistant(result.text, false)')
+    expect(listening).not.toContain("setSection('assistant')")
+    expect(live).not.toContain("setSection('assistant')")
+    expect(androidE2E).toContain('successfulMainBubbaVoiceStaysOnToday')
+  })
+
+  it('provides four compact native shortcuts including Call and Text', () => {
+    expect(app).toContain('data-testid="call-button"')
+    expect(app).toContain('data-testid="text-button"')
+    expect(nativeBridge).toContain('CallAssistantPlugin.openDialer')
+    expect(nativeBridge).toContain('CallAssistantPlugin.openTextMessage')
+    expect(java).toContain('new Intent(Intent.ACTION_DIAL')
+    expect(java).toContain('new Intent(Intent.ACTION_SENDTO')
+    expect(java).toContain('Uri.parse("smsto:"')
+    expect(styles).toContain('grid-template-columns:repeat(4,minmax(0,1fr))')
+    expect(styles).toContain('@media(max-width:520px){.media-launcher{grid-template-columns:1fr 1fr')
+  })
+
+  it('provides a safe phone-home escape and restores Today after Android tools', () => {
+    expect(app).toContain('data-testid="phone-home-button"')
+    expect(app).toContain('⌂ HOME')
+    expect(nativeBridge).toContain('CallAssistantPlugin.openPhoneHome()')
+    expect(java).toContain('intent.addCategory(Intent.CATEGORY_HOME)')
+    expect(activity).toContain("document.querySelector('.app .brand')")
+    expect(androidE2E).toContain('returningToTheAppRestoresTheTodayDashboard')
+  })
+
+  it('uses the supplied Bigfoot Software identity and direct-to-user wording', () => {
+    expect(app).toContain("import brandLogo from './assets/bigfoot-software-logo.png'")
+    expect(app).toContain("import brandMark from './assets/bigfoot-software-mark.png'")
+    expect(app).toContain('className="brand-mark"')
+    expect(app).toContain('className="setup-logo"')
+    expect(app).toContain('Let your assistant tell you who is calling.')
+    expect(app).toContain('Your personal actions stay under your control.')
+    expect(storage).toContain('your personal assistant')
+    expect(storage).not.toContain('your Bigfoot’s Day assistant')
+  })
+
+  it('supports standard smart-glasses camera and media controls', () => {
+    expect(activity).toContain('public static boolean isCameraHardwareKey')
+    expect(activity).toContain('KeyEvent.KEYCODE_CAMERA')
+    expect(activity).toContain('KeyEvent.KEYCODE_HEADSETHOOK')
+    expect(activity).toContain('KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE')
+    expect(activity).toContain('new Intent(MediaStore.ACTION_IMAGE_CAPTURE)')
+    expect(androidE2E).toContain('standardSmartGlassesKeysAreMappedToCamera')
+  })
+
   it('uses a visible teal native fallback and can forcibly recover the WebView', () => {
     expect(activity).toContain('setBackgroundColor(Color.rgb(8, 54, 68))')
     expect(activity).toContain("document.querySelector('.app,.setup-shell')")
     expect(activity).toContain('webView.reload()')
+    expect(activity).toContain("if(home)home.click()")
     expect(activity).toContain('STOP AND RETURN')
     expect(activity).toContain('recoverAfterVoice()')
     expect(activity).toContain('public void onBackPressed()')
@@ -250,14 +311,16 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('Skip this lesson →')
   })
 
-  it('provides five lessons and returns the customer home after practice actions', () => {
+  it('provides six lessons including how to leave and reopen the dashboard', () => {
     expect(app).toContain('Lesson 1: Talk to Bubba')
     expect(app).toContain('Lesson 2: Use your list')
     expect(app).toContain('Lesson 3: Save a note')
     expect(app).toContain('Lesson 4: Find Camera & Video')
     expect(app).toContain('Lesson 5: Get detailed help')
+    expect(app).toContain('Lesson 6: Go Home and come back')
+    expect(app).toContain('find the Bigfoot Software logo labeled “Bigfoot v0.16 Your Day”')
     expect(app).toContain("go('home'); advanceLearning()")
-    expect(app).toContain('Lesson {state.preferences.learningStep + 1} of 5')
+    expect(app).toContain('Lesson {state.preferences.learningStep + 1} of 6')
     expect(androidE2E).toContain('newCustomerCanCompleteOrSkipEveryLesson')
     expect(androidE2E).toContain('completeSetupWithCustomerProfile')
     expect(androidE2E).toContain('The setup profile must appear on Today')
@@ -328,8 +391,8 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.14 Lesson Fix')
-    expect(app).toContain("const appVersion = 'v0.14 LESSON VOICE REPAIR'")
+    expect(labels).toContain('Bigfoot v0.16 Your Day')
+    expect(app).toContain("const appVersion = 'v0.16 HOME DASHBOARD'")
     expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0140'")
     expect(styles).not.toContain('linear-gradient(145deg,#030b11')
   })
