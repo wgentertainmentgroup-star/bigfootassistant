@@ -321,7 +321,7 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('Lesson 4: Find Camera & Video')
     expect(app).toContain('Lesson 5: Find More Help')
     expect(app).toContain('Lesson 6: Go Home and come back')
-    expect(app).toContain('find the Bigfoot Software logo labeled “Bigfoot v0.17 Tutorial Fix”')
+    expect(app).toContain('find the Bigfoot Software logo labeled “Bigfoot v0.18 Senior Tested”')
     expect(app).toContain('function practiceLessonTask()')
     expect(app).toContain('function practiceLessonNote()')
     const taskPractice = app.slice(app.indexOf('function practiceLessonTask()'), app.indexOf('function practiceLessonNote()'))
@@ -359,6 +359,31 @@ describe('Android voice and setup safety contracts', () => {
     expect(app).toContain('window.confirm(`Call ${name} at ${phone}?`)')
     expect(app).toContain('Call My Helper')
     expect(app).toContain('This button does not contact emergency services.')
+  })
+
+  it('keeps every phone feature reachable through a visible five-button navigation', () => {
+    expect(app).toContain('data-testid="nav-more"')
+    expect(app).toContain('data-testid="more-settings"')
+    expect(app).toContain('data-testid="more-notes"')
+    expect(app).toContain('data-testid="more-setup"')
+    expect(app).toContain('data-testid="more-phone-home"')
+    expect(styles).toContain('grid-template-columns:repeat(5,1fr)')
+    expect(styles).toContain('.sidebar .mobile-more-nav{display:flex!important}')
+    expect(styles).not.toContain('.sidebar>button:nth-of-type(6)')
+  })
+
+  it('explains senior-user mistakes and confirms destructive actions', () => {
+    expect(app).toContain('Type what you need to remember, then tap Add to my list.')
+    expect(app).toContain('Enter both a name and a phone number, then tap Save person.')
+    expect(app).toContain('That phone number looks too short. Please check it and try again.')
+    expect(app).toContain('Type your note first, then tap Save note.')
+    expect(app).toContain('Tap Cancel to keep it.')
+    expect(app).toContain('Tap Cancel to keep this person.')
+    expect(app).toContain('Tap Cancel to keep everything.')
+    expect(app).toContain('placeConfirmedCall(p.name, p.phone)')
+    expect(app).toContain('Open phone settings')
+    expect(app).toContain('setToast(message); window.setTimeout(() => setToast(\'\'), 6500)')
+    expect(styles).toContain('.large-text { font-size:19px }')
   })
 
   it('preserves caller identification, contacts, and ChatGPT handoff', () => {
@@ -404,8 +429,8 @@ describe('Android voice and setup safety contracts', () => {
   })
 
   it('gives the repaired package a distinguishable home-screen label', () => {
-    expect(labels).toContain('Bigfoot v0.17 Tutorial Fix')
-    expect(app).toContain("const appVersion = 'v0.17 TUTORIAL REPAIR'")
+    expect(labels).toContain('Bigfoot v0.18 Senior Tested')
+    expect(app).toContain("const appVersion = 'v0.18 SENIOR ACCEPTANCE'")
     expect(app).toContain("const setupMarker = 'bigfoots-day-easy-setup-v0140'")
     expect(styles).not.toContain('linear-gradient(145deg,#030b11')
   })

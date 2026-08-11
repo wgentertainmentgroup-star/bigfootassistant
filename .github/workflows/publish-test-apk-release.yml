@@ -1,5 +1,5 @@
 name: Publish Bigfoot's Day Test APK
-# v0.17 release gate: every tutorial transition must remain visibly on Today.
+# v0.18 senior acceptance gate: a first-time customer must reach and recover every feature.
 
 on:
   push:
@@ -131,14 +131,14 @@ jobs:
           ./gradlew --no-daemon assembleDebug
 
       - name: Give APK a clear name
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.17-Tutorial-Repair.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Bigfoots-Day-v0.18-Senior-Acceptance.apk
 
       - name: Publish permanent public download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.17-tutorial-repair \
-            Bigfoots-Day-v0.17-Tutorial-Repair.apk \
+          gh release create v0.18-senior-acceptance \
+            Bigfoots-Day-v0.18-Senior-Acceptance.apk \
             --target "$GITHUB_SHA" \
-            --title "Bigfoot's Day v0.17 — Tutorial Repair" \
-            --notes "Samsung Z Fold5 tutorial repair. Lessons 2 and 3 now use dedicated instant stay-on-Today actions like Lesson 1 and never route through the assistant page. Lesson 5 also stays on Today, every lesson has a clear Exit Tutorial control, and all normal voice and Today quick actions are prohibited from changing pages. The Android test observes every intermediate tutorial render and fails if the home page disappears, the assistant page appears, or the screen becomes blank. The release gate also repeats fresh setup, voice success/failure, all six lessons, persistence, HOME return, and hardware-key checks. Installs separately as Bigfoot v0.17 Tutorial Fix."
+            --title "Bigfoot's Day v0.18 — Senior Acceptance" \
+            --notes "Final older-customer acceptance build for Samsung Z Fold5. A visible More button now keeps Notes, Settings, setup help, and Phone Home reachable on the real phone layout. Blank forms explain what to do, calls and removals require confirmation, feedback stays visible longer, text and touch targets are larger, and failed voice setup links directly to phone settings. Android tests walk all 11 setup screens, every tutorial lesson, repeated voice success/failure and native recovery, visible mobile navigation, mistaken input, canceled removal, persisted daily data, Phone Home return, and smart-glasses camera keys. Installs separately as Bigfoot v0.18 Senior Tested."
